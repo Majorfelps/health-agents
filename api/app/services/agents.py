@@ -402,8 +402,66 @@ def gerar_resposta(
 
     `protocolo` é o PlanTraining.protocolo do usuário (dia da semana → nome
     do treino), usado para resolver o treino de hoje nas intents que falam
-    de treino (TED_PERSONAL / MIXED)."""
+    de treino (TED_PERSONAL / MIXED).
+
+    Se LLM_ENABLED, tenta gerar o *texto* da resposta via LLM (nunca pra
+    SAFETY_ALERT) — mas `detected_meal` e o treino do dia continuam sempre
+    calculados por regra fixa (estimate_macros / resolve_treino_do_dia), pra
+    nunca persistir um número que o LLM inventou. Qualquer falha do LLM cai
+    pro template determinístico abaixo, sem quebrar o chat."""
     profile = profile or DEFAULT_USER_PROFILE
+
+    if intent != "SAFETY_ALERT":
+        from app.services import llm
+        if llm.is_enabled():
+            resposta_llm = _gerar_resposta_llm(intent, user_msg, profile, today_totals, protocolo)
+            if resposta_llm is not None:
+                return resposta_llm
+
+    return _gerar_resposta_deterministica(intent, user_msg, profile, today_totals, protocolo)
+
+
+def _gerar_resposta_llm(
+    intent: str,
+    user_msg: str,
+    profile: dict,
+    today_totals: dict | None,
+    protocolo: dict | None,
+) -> AgentReply | None:
+    from app.services import llm
+    from app.services.classifier import looks_like_meal
+
+    agent = {"ED_NUTRI": "nutri", "TED_PERSONAL": "personal"}.get(intent, "master")
+
+    detected_meal = None
+    if intent == "ED_NUTRI" and looks_like_meal(user_msg):
+        detected_meal = estimate_macros(user_msg)
+
+    context: dict = {"intent": intent}
+    if intent in ("ED_NUTRI", "MIXED"):
+        totals = today_totals or {"kcal": 0, "P": 0, "F": 0, "C": 0, "agua_ml": 0}
+        context["nutricao"] = {
+            "hoje": totals,
+            "meta": {k: profile[k] for k in ("meta_kcal", "meta_p", "meta_f", "meta_c", "meta_agua_ml")},
+            "refeicao_detectada": detected_meal,
+        }
+    if intent in ("TED_PERSONAL", "MIXED"):
+        context["treino_hoje"] = _treino_hoje(protocolo)
+        context["dia_da_semana"] = DIAS_PT[date.today().weekday()]
+
+    text = llm.generate_reply_via_llm(agent, user_msg, context)
+    if text is None:
+        return None
+    return AgentReply(text=text, agent=agent, intent=intent, detected_meal=detected_meal)
+
+
+def _gerar_resposta_deterministica(
+    intent: str,
+    user_msg: str,
+    profile: dict,
+    today_totals: dict | None,
+    protocolo: dict | None,
+) -> AgentReply:
     if intent == "SAFETY_ALERT":
         return reply_safety(profile)
     if intent == "ORCHESTRATOR":

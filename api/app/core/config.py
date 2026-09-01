@@ -26,5 +26,13 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # LLM opcional (OpenRouter — API compatível com OpenAI). Com
+    # llm_enabled=False (padrão), o chat continua 100% determinístico e
+    # offline, como sempre foi. Ver README para como habilitar.
+    llm_enabled: bool = False
+    openrouter_api_key: str = ""
+    openrouter_model: str = ""  # ex.: "anthropic/claude-haiku-4.5" — ver openrouter.ai/models
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
 
 settings = Settings()

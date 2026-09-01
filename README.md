@@ -140,12 +140,46 @@ npm run dev
    O `classifier.py` continua sendo regras puras (espelha `master_agent.py`).
 6. **CORS aberto para localhost por default.** Em produção, ajustar.
 
+## Integração com LLM (opcional)
+
+Por padrão o chat é 100% determinístico e offline (como descrito acima). Pra
+ligar respostas geradas por LLM via [OpenRouter](https://openrouter.ai/models)
+(API compatível com OpenAI, qualquer modelo do catálogo deles), defina no
+`.env`:
+
+```bash
+LLM_ENABLED=true
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_MODEL=anthropic/claude-haiku-4.5   # qualquer slug do openrouter.ai/models
+```
+
+Com Docker, o `docker-compose.yml` já repassa essas variáveis do `.env` da
+raiz pro serviço `api`. O que muda com `LLM_ENABLED=true`:
+
+- **Texto da resposta** (Nutri/Personal/Master) passa a ser gerado pelo LLM,
+  na voz de cada persona, com os dados reais (totais do dia, metas, treino de
+  hoje) passados como contexto.
+- **Classificação de intenção** (`ED_NUTRI`/`TED_PERSONAL`/`MIXED`/
+  `ORCHESTRATOR`) também passa a ser feita pelo LLM.
+
+O que **nunca** muda, mesmo com LLM habilitado:
+
+- **`SAFETY_ALERT` nunca passa pelo LLM.** Termos de risco à saúde (dor no
+  peito, ideação suicida, etc.) são sempre detectados por regra fixa em
+  `classifier.py`, antes de qualquer chamada ao LLM — a resposta de
+  emergência é sempre o texto fixo com SAMU/CVV.
+- **Macros persistidas no banco continuam vindas de `estimate_macros()`**
+  (regra fixa), nunca do LLM — o LLM só escreve o texto, os números que vão
+  pro `meals`/dashboard nunca são "inventados" por ele.
+- **Qualquer falha do LLM** (rede, timeout, resposta malformada) cai
+  automaticamente pro classificador/templates determinísticos — o chat nunca
+  quebra por causa do LLM. Ver `api/app/services/llm.py`.
+
 ## Próximos passos (roadmap)
 
 - [ ] Autenticação (OAuth2/JWT)
 - [ ] Múltiplos usuários (multi-tenant)
 - [ ] Versão mobile (React Native ou PWA)
-- [ ] Integração com LLM opcional (toggle em `.env`)
 - [ ] Exportar PDF de relatório semanal
 - [ ] Bot Telegram/WhatsApp opcional que reusa a API
 - [ ] Migração para SQLite (para dev single-user)

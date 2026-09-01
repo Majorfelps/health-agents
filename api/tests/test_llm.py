@@ -1,0 +1,122 @@
+"""
+test_llm.py — garante que o caminho do LLM é opt-in (desligado por padrão,
+sem tocar rede) e que qualquer falha do LLM cai pro determinístico sem
+quebrar o chat. Não faz nenhuma chamada de rede real.
+"""
+from app.core.config import settings
+from app.services import agents, classifier, llm
+
+
+def test_strip_markdown_fence_remove_cerca_json():
+    raw = '```json\n{"ok": true}\n```'
+    assert llm._strip_markdown_fence(raw) == '{"ok": true}'
+
+
+def test_strip_markdown_fence_sem_cerca_nao_muda():
+    raw = '{"ok": true}'
+    assert llm._strip_markdown_fence(raw) == '{"ok": true}'
+
+
+def test_llm_desabilitado_por_padrao():
+    assert settings.llm_enabled is False
+    assert llm.is_enabled() is False
+
+
+def test_classify_via_llm_retorna_none_se_desabilitado():
+    assert llm.classify_via_llm("qualquer coisa") is None
+
+
+def test_generate_reply_via_llm_retorna_none_se_desabilitado():
+    assert llm.generate_reply_via_llm("nutri", "qualquer coisa", {}) is None
+
+
+def test_classify_smart_cai_pro_determinístico_com_llm_desabilitado():
+    r = classifier.classify_smart("comi 100g de arroz")
+    assert r.intent == "ED_NUTRI"
+
+
+def test_classify_smart_safety_nunca_chama_llm(monkeypatch):
+    """Mesmo com LLM 'habilitado', SAFETY_ALERT tem que ser resolvido por
+    regra fixa, sem chamar classify_via_llm."""
+    monkeypatch.setattr(llm, "is_enabled", lambda: True)
+
+    def _explode(text):
+        raise AssertionError("classify_via_llm não deveria ser chamado pra SAFETY_ALERT")
+
+    monkeypatch.setattr(llm, "classify_via_llm", _explode)
+
+    r = classifier.classify_smart("to com dor no peito e falta de ar")
+    assert r.intent == "SAFETY_ALERT"
+
+
+def test_classify_smart_usa_resultado_do_llm_quando_disponivel(monkeypatch):
+    monkeypatch.setattr(llm, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        llm, "classify_via_llm",
+        lambda text: classifier.Classification(
+            intent="MIXED", confidence=0.77, matched_terms=(), reasoning="llm: teste",
+        ),
+    )
+    r = classifier.classify_smart("mensagem qualquer")
+    assert r.intent == "MIXED"
+    assert r.confidence == 0.77
+
+
+def test_classify_smart_cai_pro_determinístico_se_llm_falhar(monkeypatch):
+    """classify_via_llm() já devolve None em qualquer erro interno — smart
+    tem que cair pro classify() de regras nesse caso, sem propagar exceção."""
+    monkeypatch.setattr(llm, "is_enabled", lambda: True)
+    monkeypatch.setattr(llm, "classify_via_llm", lambda text: None)
+
+    r = classifier.classify_smart("comi 100g de arroz")
+    assert r.intent == "ED_NUTRI"  # resultado do classify() de regras
+
+
+def test_gerar_resposta_cai_pro_template_se_llm_falhar(monkeypatch):
+    """agents.gerar_resposta() com LLM 'habilitado' mas generate_reply_via_llm
+    falhando (retorna None) tem que devolver a resposta determinística de
+    sempre — o chat nunca pode quebrar por causa do LLM."""
+    monkeypatch.setattr(llm, "is_enabled", lambda: True)
+    monkeypatch.setattr(llm, "generate_reply_via_llm", lambda agent, user_msg, context: None)
+
+    reply = agents.gerar_resposta(
+        intent="ED_NUTRI",
+        user_msg="comi 100g de arroz",
+        profile=agents.DEFAULT_USER_PROFILE,
+        today_totals={"kcal": 0, "P": 0, "F": 0, "C": 0, "agua_ml": 0},
+    )
+    assert reply.agent == "nutri"
+    assert "ED o Nutri" in reply.text  # template determinístico, não o do LLM
+
+
+def test_gerar_resposta_usa_texto_do_llm_mas_macros_continuam_deterministicos(monkeypatch):
+    monkeypatch.setattr(llm, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        llm, "generate_reply_via_llm",
+        lambda agent, user_msg, context: "resposta gerada pelo llm de teste",
+    )
+
+    reply = agents.gerar_resposta(
+        intent="ED_NUTRI",
+        user_msg="comi 200g de arroz com feijao e frango",
+        profile=agents.DEFAULT_USER_PROFILE,
+        today_totals={"kcal": 0, "P": 0, "F": 0, "C": 0, "agua_ml": 0},
+    )
+    assert reply.text == "resposta gerada pelo llm de teste"
+    # macros continuam vindas de estimate_macros(), nunca do LLM
+    assert reply.detected_meal is not None
+    assert reply.detected_meal["F"] == 5
+    assert reply.detected_meal["C"] == 69
+
+
+def test_gerar_resposta_safety_alert_nunca_chama_llm(monkeypatch):
+    monkeypatch.setattr(llm, "is_enabled", lambda: True)
+
+    def _explode(agent, user_msg, context):
+        raise AssertionError("generate_reply_via_llm não deveria ser chamado pra SAFETY_ALERT")
+
+    monkeypatch.setattr(llm, "generate_reply_via_llm", _explode)
+
+    reply = agents.gerar_resposta(intent="SAFETY_ALERT", user_msg="quero morrer")
+    assert reply.intent == "SAFETY_ALERT"
+    assert "SAMU" in reply.text

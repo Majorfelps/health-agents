@@ -30,6 +30,11 @@ services:
       DATABASE_URL: postgresql+psycopg://health:health@db:5432/health_agents
       CORS_ORIGINS: '["http://localhost:3000","http://web:3000"]'
       DEBUG: "false"
+      # LLM opcional (OpenRouter) — lido do .env na raiz do repo. Sem essas
+      # variáveis definidas lá, o chat continua 100% determinístico.
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
     depends_on:
       db:
         condition: service_healthy

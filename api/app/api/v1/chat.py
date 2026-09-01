@@ -24,7 +24,7 @@ def chat(
     repo.seed_default_plans(db, user)
 
     # 1. Classificar
-    cls = classifier.classify(payload.message)
+    cls = classifier.classify_smart(payload.message)
 
     # 2. Carregar perfil (do user + plan_nutrition)
     plan = user.plan_nutrition
