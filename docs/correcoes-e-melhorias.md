@@ -94,22 +94,57 @@ Optou-se pela Opção B (Alembic como fonte única de verdade do schema).
   visualmente no browser (dashboard renderizando LOWER A com macros ainda
   corretos da Etapa 1).
 
-## Etapa 5 — Testes e cobertura
+## Etapa 5 — Testes e cobertura ✅ concluída (2026-09-01)
 
-- [ ] **Adicionar testes em `api/tests/`** (hoje vazio). Prioridade:
-  1. `classifier.classify()` — casos de SAFETY_ALERT, GREETING, MIXED,
-     ED_NUTRI, TED_PERSONAL (é a lógica mais frágil/regras many-branch).
-  2. `repository.today_totals()` / `last_n_days_totals()` — regressão pro
-     bug da Etapa 1, garantir que não volte a acontecer.
-  3. Endpoint `/api/v1/chat` — fluxo completo (classificação → resposta →
-     persistência → detected_meal).
-- [ ] Adicionar um job de CI simples (`.github/workflows/` já existe a pasta,
-  mas só tem `.gitkeep`) rodando `pytest` e `npm run lint` / `next build`.
+- [x] **24 testes em `api/tests/`** (antes vazio), usando `testcontainers`
+  pra subir um Postgres descartável por sessão de teste (não precisa de
+  Postgres já rodando na máquina de quem roda `pytest`):
+  - `test_classifier.py` — SAFETY_ALERT, GREETING (simples e "bom dia"/
+    "boa tarde"), MIXED, ED_NUTRI, TED_PERSONAL, mensagem vazia,
+    `looks_like_meal()`.
+  - `test_repository.py` — regressão direta pro bug da Etapa 1
+    (`today_totals()` e `last_n_days_totals()` não podem trocar F/C),
+    soma de múltiplas refeições, usuário sem refeição, idempotência do
+    `seed_default_plans`.
+  - `test_chat_endpoint.py` — fluxo completo via `TestClient`: saudação,
+    refeição persistida batendo com `meals/today`, `persist=false` não
+    grava histórico, ordem cronológica do histórico, dashboard refletindo
+    plano de treino editado (regressão da Etapa 4), SAFETY_ALERT não
+    confunde com refeição.
+  - `api/requirements-dev.txt` com `pytest` + `httpx` + `testcontainers`.
+- [x] **Bug real pego pelo próprio teste, corrigido**: `classifier.py` não
+  reconhecia "bom dia"/"boa tarde"/"boa noite" como saudação — `tokens`
+  são palavras soltas (`{"bom","dia"}`) mas `GREETING_TERMS` guardava a
+  frase inteira como um elemento do set, então a comparação por
+  subconjunto nunca batia. Corrigido com `_GREETING_TOKENS` (palavras
+  soltas derivadas de `GREETING_TERMS`).
+- [x] **CI em `.github/workflows/ci.yml`** (a pasta só tinha `.gitkeep` e,
+  por engano, um `__init__.py` — removido): job `api-tests` (pytest, sobe
+  o Postgres via Docker do próprio runner) e `web-build` (`npm install` +
+  `npm run lint` + `npm run build`).
+- [x] **Corrigido de quebra pra CI funcionar**: `npm run lint` ficava preso
+  num wizard interativo — `eslint`/`eslint-config-next` nunca tinham sido
+  instalados de verdade, só o script no `package.json`. Adicionadas as
+  deps + `web/.eslintrc.json`, e corrigidos 2 erros reais de lint (aspas
+  não escapadas em JSX, `chat/page.tsx` e `checkins/page.tsx`).
+- [x] **Achado à parte, corrigido**: `npm install` acusou `next@15.1.6`
+  com ~30 CVEs conhecidas (1 crítica — exposição de informação/RCE via
+  protocolo React Flight). Atualizado para `next@15.5.25` (mesma major,
+  sem mudança de API usada no projeto) — `npm audit` cai de 3
+  vulnerabilidades (2 high, 1 crítica) pra 2 (a única alta restante é
+  `postcss` embutido dentro do próprio `next`, só resolvida com upgrade
+  pra Next 16, que é breaking — deixado de fora por ora).
+- Validado ao vivo: 24/24 testes passando, `npm run lint`/`npm run build`
+  limpos, rebuild Docker completo com o Next atualizado (`docker compose
+  up --build` do zero) — dashboard, chat e macros (Etapa 1) continuam
+  corretos no browser.
 
 ## Etapa 6 — Itens do roadmap já sinalizados no README (não urgentes)
 
-Sem mudança de prioridade sugerida aqui, apenas repetindo o que já está
-documentado no `README.md` para manter tudo num lugar só:
+Estes itens não têm uma correção de código a aplicar — são decisões de
+produto/escopo maior, cada uma merecendo sua própria conversa antes de
+começar a implementar. Deixados aqui só pra manter tudo num lugar só; sem
+mudança de prioridade sugerida em relação ao que já estava no `README.md`:
 
 - [ ] Autenticação (OAuth2/JWT) — hoje todo endpoint usa o usuário fixo
   `553199674109` (Michael) via default de query param.
