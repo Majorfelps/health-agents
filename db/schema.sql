@@ -1,8 +1,11 @@
 -- ============================================================================
--- health-agents — Schema bootstrap (Postgres 17)
--- Idempotente. Aplicado automaticamente na inicialização do container db.
--- Espelha scripts/health_db_bootstrap.sql do Hermes, estendido com
--- plan_nutrition, plan_training, meals (com opcao A/B/C), exercise_logs.
+-- health-agents — Schema (Postgres 17)
+-- HISTÓRICO / REFERÊNCIA — não é mais aplicado automaticamente pelo
+-- docker-compose. O schema real é gerenciado por Alembic
+-- (api/alembic/versions/), rodado via `alembic upgrade head` no entrypoint
+-- do container `api`. Mantido aqui só como leitura rápida do modelo de
+-- dados; se divergir de api/app/models/models.py, o models.py (+ Alembic)
+-- é que manda.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS users (

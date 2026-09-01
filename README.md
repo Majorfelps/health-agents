@@ -30,6 +30,7 @@ health-agents/
 │   │       ├── classifier.py    # classifica intenção (NUTRI / TREINO / MIXED / ORCHESTRATOR / SAFETY)
 │   │       ├── agents.py        # personas + plano semanal + estimador de macros
 │   │       └── repository.py    # queries (totais do dia, semana, últimos check-ins)
+│   ├── alembic/             # migrações (fonte de verdade do schema — ver db/schema.sql abaixo)
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── web/
@@ -43,7 +44,7 @@ health-agents/
 │   ├── package.json
 │   └── Dockerfile
 ├── db/
-│   └── schema.sql           # bootstrap idempotente (users, plan_*, meals, exercise_logs, checkins, agent_messages)
+│   └── schema.sql           # referência do modelo de dados (não é mais aplicado automaticamente — ver api/alembic/)
 ├── docs/
 │   └── migration-from-hermes.md
 ├── docker-compose.yml
@@ -68,19 +69,21 @@ Aguarde ~30s e abra:
 Em terminais separados:
 
 ```bash
-# 1) Postgres
+# 1) Postgres (vazio — schema é criado pelo Alembic no passo 2)
 docker run --rm -d --name health-db \
   -e POSTGRES_USER=health -e POSTGRES_PASSWORD=health -e POSTGRES_DB=health_agents \
-  -p 5432:5432 -v "$PWD/db":/docker-entrypoint-initdb.d postgres:17-alpine
+  -p 5432:5432 postgres:17-alpine
 
 # 2) API
 cd api
 pip install -r requirements.txt
-DATABASE_URL=postgresql+psycopg://health:health@localhost:5432/health_agents \
-  uvicorn app.main:app --reload --port 8000
+export DATABASE_URL=postgresql+psycopg://health:health@localhost:5432/health_agents
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
 
 # 3) Web
 cd web
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000
 npm install
 npm run dev
 ```

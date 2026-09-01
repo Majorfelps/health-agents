@@ -33,17 +33,37 @@ Baseado na auditoria de 2026-09-01 (stack testado via `docker compose up --build
   navegação em `/`, `/chat`, `/plan`, `/checkins` — todas as chamadas de API
   batendo em `localhost:8088`, sem 500/CORS/console errors.
 
-## Etapa 3 — Infraestrutura de banco de dados
+## Etapa 3 — Infraestrutura de banco de dados ✅ concluída (2026-09-01)
 
-- [ ] **Decidir sobre o Alembic**: hoje `api/alembic/` existe mas está vazio
-  (sem `alembic.ini`, `env.py`, migrações, nem a lib no `requirements.txt`).
-  - Opção A (mínima): remover a pasta e continuar só com `db/schema.sql` +
-    `create_all()` no startup — documentar essa decisão no README.
-  - Opção B (recomendada para produção real): inicializar o Alembic de
-    verdade (`alembic init`, `env.py` apontando para `Base.metadata`,
-    gerar a migração inicial a partir de `db/schema.sql`), adicionar
-    `alembic` ao `requirements.txt`, e trocar `Base.metadata.create_all()`
-    no `main.py` por `alembic upgrade head` no entrypoint do container.
+Optou-se pela Opção B (Alembic como fonte única de verdade do schema).
+
+- [x] `alembic.ini` + `alembic/env.py` (lê `DATABASE_URL` de
+  `app.core.config.settings`, `target_metadata = Base.metadata`) +
+  `alembic/script.py.mako` escritos à mão.
+- [x] `alembic==1.14.0` adicionado ao `api/requirements.txt`.
+- [x] Migração inicial `alembic/versions/2c526581025c_initial_schema.py`
+  gerada via `alembic revision --autogenerate` contra um Postgres vazio
+  (container descartável), cobrindo as 7 tabelas de `models.py` + o seed
+  do usuário Michael (mesmo `INSERT ... ON CONFLICT DO NOTHING` que estava
+  em `db/schema.sql`).
+- [x] `api/Dockerfile`: `CMD` agora roda `alembic upgrade head && uvicorn ...`
+  antes de servir requests.
+- [x] `api/app/main.py`: removido `Base.metadata.create_all()` do
+  `lifespan` — schema passa a ser 100% responsabilidade do Alembic.
+- [x] `docker-compose.yml`: removido o mount de `db/schema.sql` em
+  `docker-entrypoint-initdb.d` do serviço `db` (evita as duas fontes
+  tentarem criar as mesmas tabelas — `db` agora sobe vazio, o `api`
+  aplica a migração no startup).
+- [x] `db/schema.sql` marcado como referência histórica no comentário do
+  topo (não é mais executado automaticamente).
+- [x] README atualizado: seção "Rodando sem Docker" agora manda rodar
+  `alembic upgrade head` antes do `uvicorn`, e criar `web/.env.local` a
+  partir do `web/.env.example` (Etapa 2).
+- Validado ao vivo: `docker volume rm` + `docker compose up --build` do
+  zero → logs mostram a migração rodando antes do uvicorn subir, 8 tabelas
+  criadas (+ `alembic_version`), usuário seed presente, `restart` do `api`
+  não tenta recriar nada (idempotente), fluxo de chat com refeição
+  funcionando com F/C corretos.
 
 ## Etapa 4 — Plano de treino editável (fechar o gap funcional)
 

@@ -8,7 +8,9 @@ services:
       POSTGRES_DB: health_agents
     volumes:
       - db_data:/var/lib/postgresql/data
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    # Schema é criado pelo Alembic (api/alembic/), rodado no entrypoint do
+    # container `api` — não monta mais db/schema.sql aqui pra não haver duas
+    # fontes de verdade tentando criar as mesmas tabelas.
     # Não expõe 5432 ao host (postgres do n8n já usa a porta).
     # API acessa via DNS interno `db:5432`.
     expose:
