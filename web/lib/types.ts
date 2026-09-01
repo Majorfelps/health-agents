@@ -87,6 +87,26 @@ export interface ChatResponse {
   message_id: number | null;
 }
 
+export interface LLMConfig {
+  enabled: boolean;
+  model: string;
+  updated_at: string;
+}
+
+export interface LLMTestResult {
+  ok: boolean;
+  sample?: string | null;
+  error?: string | null;
+}
+
+export interface LLMModel {
+  id: string;
+  name: string;
+  context_length: number;
+  is_free: boolean;
+  pricing: { prompt: string; completion: string };
+}
+
 export const AGENT_LABEL: Record<string, { label: string; emoji: string }> = {
   master: { label: "Master Agent", emoji: "🤖" },
   nutri: { label: "ED o Nutri", emoji: "🥗" },

@@ -8,7 +8,9 @@ services:
       POSTGRES_DB: health_agents
     volumes:
       - db_data:/var/lib/postgresql/data
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    # Schema é criado pelo Alembic (api/alembic/), rodado no entrypoint do
+    # container `api` — não monta mais db/schema.sql aqui pra não haver duas
+    # fontes de verdade tentando criar as mesmas tabelas.
     # Não expõe 5432 ao host (postgres do n8n já usa a porta).
     # API acessa via DNS interno `db:5432`.
     expose:
@@ -28,6 +30,11 @@ services:
       DATABASE_URL: postgresql+psycopg://health:health@db:5432/health_agents
       CORS_ORIGINS: '["http://localhost:3000","http://web:3000"]'
       DEBUG: "false"
+      # LLM opcional (OpenRouter) — lido do .env na raiz do repo. Sem essas
+      # variáveis definidas lá, o chat continua 100% determinístico.
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
     depends_on:
       db:
         condition: service_healthy
@@ -39,9 +46,12 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* é congelado no bundle em build-time (roda no browser
+        # do usuário, não dentro da rede Docker) — por isso aponta pra porta
+        # exposta no host (8088), não para o hostname interno `api`.
+        NEXT_PUBLIC_API_URL: http://localhost:8088
     restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: http://api:8000
     depends_on:
       api:
         condition: service_started

@@ -8,7 +8,7 @@ from app.core.db import get_db
 from app.models import models as m
 from app.schemas import schemas as s
 from app.services import repository as repo
-from app.services.agents import PLANO_SEMANAL, DIAS_PT
+from app.services.agents import DIAS_PT, resolve_treino_do_dia
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -47,11 +47,18 @@ def list_workouts(
 
 
 @router.get("/today")
-def today_workout():
-    """Retorna o treino do dia baseado no PLANO_SEMANAL (read-only)."""
+def today_workout(
+    user_whatsapp: str = Query("553199674109"),
+    db: Session = Depends(get_db),
+):
+    """Retorna o treino do dia, resolvido do PlanTraining do usuário (com
+    fallback pro padrão)."""
     from datetime import date
+    user = repo.get_or_create_user(db, user_whatsapp)
+    repo.seed_default_plans(db, user)
     weekday = date.today().weekday()
-    plano = PLANO_SEMANAL[weekday]
+    protocolo = user.plan_training.protocolo if user.plan_training else None
+    plano = resolve_treino_do_dia(protocolo, weekday)
     return {
         "weekday": weekday,
         "weekday_pt": DIAS_PT[weekday],

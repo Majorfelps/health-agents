@@ -10,7 +10,10 @@ Decisões:
 - Emparelhamento de ambas as categorias vai para MIXED
 - Saudação/comando admin → ORCHESTRATOR
 - Orquestrador também cobre GREETING (Master Agent apresenta-se)
-- Tudo determinístico (sem LLM)
+- Tudo determinístico por padrão (sem LLM). `classify_smart()` — usada pelo
+  endpoint de chat — pode delegar pro LLM (services/llm.py) quando
+  LLM_ENABLED=true, mas SAFETY_ALERT nunca passa por lá: é checado por regra
+  fixa antes de qualquer chamada ao LLM, sempre.
 """
 from __future__ import annotations
 import re
@@ -58,6 +61,11 @@ GREETING_TERMS = {
     "oi", "olá", "ola", "eae", "opa", "hi", "hey", "hello",
     "bom dia", "boa tarde", "boa noite",
 }
+
+# GREETING_TERMS guarda frases inteiras ("bom dia"); a comparação por
+# subconjunto de tokens abaixo precisa das palavras soltas, senão
+# "bom dia" nunca bate (tokens = {"bom", "dia"}, não a frase toda).
+_GREETING_TOKENS = {w for g in GREETING_TERMS for w in g.split()}
 
 SAFETY_TERMS = {
     "dor no peito", "dor torácica", "tontura", "desmaiei", "desmaio",
@@ -123,7 +131,7 @@ def classify(text: str) -> Classification:
     # 2. GREETING
     greeting_hits = [g for g in GREETING_TERMS if g in tn]
     is_short = len(tokens) <= 4
-    if (tokens <= GREETING_TERMS) or (is_short and greeting_hits and len(tokens - GREETING_TERMS) <= 1):
+    if (tokens <= _GREETING_TOKENS) or (is_short and greeting_hits and len(tokens - _GREETING_TOKENS) <= 1):
         return Classification(
             intent="ORCHESTRATOR", confidence=0.85,
             matched_terms=tuple(greeting_hits),
@@ -201,6 +209,38 @@ def classify(text: str) -> Classification:
         matched_terms=(),
         reasoning="no clear match",
     )
+
+
+def classify_smart(text: str, llm_enabled: bool = False, llm_model: str = "") -> Classification:
+    """Ponto de entrada usado pelo endpoint de chat: igual a classify(), mas
+    delega a classificação (exceto SAFETY_ALERT) pro LLM quando habilitado.
+
+    `llm_enabled`/`llm_model` vêm da config do LLM lida do banco (ver
+    repository.get_llm_config() — editável via API, sem restart).
+
+    O check de SAFETY_ALERT roda aqui, sempre, por regra fixa — nunca chega
+    a chamar o LLM nesse caso. Se o LLM estiver desabilitado, ou a chamada
+    falhar por qualquer motivo, cai pro classify() 100% determinístico.
+    """
+    if not text or not text.strip():
+        return classify(text)
+
+    tn = _norm(text.strip().lower())
+    safety_hits = [w for w in SAFETY_TERMS if w in tn]
+    if safety_hits:
+        return Classification(
+            intent="SAFETY_ALERT", confidence=0.99,
+            matched_terms=tuple(safety_hits),
+            reasoning="safety keyword detected",
+        )
+
+    from app.services import llm
+    if llm.is_enabled(llm_enabled, llm_model):
+        result = llm.classify_via_llm(text, llm_model)
+        if result is not None:
+            return result
+
+    return classify(text)
 
 
 # ── Helpers para detecção de refeição (espelha master_agent.looks_like_meal) ─

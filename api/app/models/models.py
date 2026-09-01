@@ -75,6 +75,20 @@ class PlanTraining(Base):
     user: Mapped["User"] = relationship("User", back_populates="plan_training")
 
 
+class LLMConfig(Base):
+    """Config do LLM opcional (singleton — sempre 1 linha). Editável via
+    PUT /api/v1/llm/config, sem precisar reiniciar o container. Valores
+    iniciais vêm de LLM_ENABLED/OPENROUTER_MODEL no .env (só na 1ª criação
+    da linha); depois disso, o banco manda. A API key continua só no .env
+    — não é editável por aqui."""
+    __tablename__ = "llm_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    model: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class Meal(Base):
     """Refeição registrada (com 3 opções A/B/C). Espelha nutrition_logs."""
     __tablename__ = "meals"
