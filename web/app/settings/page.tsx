@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
 import NavBar from "@/components/NavBar";
-import { useApi, putJson } from "@/lib/api";
-import { LLMConfig, LLMModel } from "@/lib/types";
+import { useApi, putJson, postJson } from "@/lib/api";
+import { LLMConfig, LLMModel, LLMTestResult } from "@/lib/types";
 
 export default function SettingsPage() {
   const { data: cfg, mutate: refreshCfg } = useApi<LLMConfig>("/api/v1/llm/config");
@@ -53,6 +53,8 @@ function LLMForm({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<LLMTestResult | null>(null);
 
   async function save() {
     setSaving(true);
@@ -66,6 +68,19 @@ function LLMForm({
       setError(String(e?.message || e));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function testModel() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await postJson<LLMTestResult>("/api/v1/llm/test", { model });
+      setTestResult(r);
+    } catch (e: any) {
+      setTestResult({ ok: false, error: String(e?.message || e) });
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -94,7 +109,10 @@ function LLMForm({
 
         <select
           value={models.some((m) => m.id === model) ? model : ""}
-          onChange={(e) => setModel(e.target.value)}
+          onChange={(e) => {
+            setModel(e.target.value);
+            setTestResult(null);
+          }}
           disabled={loadingModels}
           className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm mb-2"
         >
@@ -108,16 +126,39 @@ function LLMForm({
           ))}
         </select>
 
-        <input
-          type="text"
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          placeholder="ou digite o slug manualmente (ex: anthropic/claude-haiku-4.5)"
-          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
-        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={model}
+            onChange={(e) => {
+              setModel(e.target.value);
+              setTestResult(null);
+            }}
+            placeholder="ou digite o slug manualmente (ex: anthropic/claude-haiku-4.5)"
+            className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
+          />
+          <button
+            type="button"
+            onClick={testModel}
+            disabled={testing || !model}
+            className="px-3 py-1.5 rounded text-sm font-medium border border-gray-300 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
+          >
+            {testing ? "Testando…" : "Testar modelo"}
+          </button>
+        </div>
+
+        {testResult && (
+          <p className={"text-xs mt-1.5 " + (testResult.ok ? "text-green-700" : "text-red-600")}>
+            {testResult.ok
+              ? `✓ Funcionou — resposta de teste: "${testResult.sample}"`
+              : `✗ ${testResult.error}`}
+          </p>
+        )}
+
         {freeOnly && (
           <p className="text-xs text-gray-400 mt-1">
-            Modelos gratuitos têm limite de ~50 requisições/dia por conta OpenRouter (bons pra testar).
+            Modelos gratuitos têm limite de ~50 requisições/dia por conta OpenRouter, e alguns são restritos a
+            agentic harnesses (recusam chat comum) — use &quot;Testar modelo&quot; antes de salvar.
           </p>
         )}
       </div>

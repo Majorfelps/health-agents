@@ -24,7 +24,15 @@ import logging
 from typing import Optional
 
 import httpx
-from openai import OpenAI
+from openai import (
+    OpenAI,
+    APIConnectionError,
+    APIStatusError,
+    AuthenticationError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
+)
 
 from app.core.config import settings
 
@@ -78,6 +86,51 @@ def _get_client() -> Optional[OpenAI]:
     if _client is None:
         _client = OpenAI(base_url=settings.openrouter_base_url, api_key=settings.openrouter_api_key)
     return _client
+
+
+def _error_message(e: Exception) -> str:
+    return str(getattr(e, "message", None) or e)[:300]
+
+
+def test_model(model: str) -> dict:
+    """Chamada mínima de verdade pro modelo, sem persistir nada — usada
+    pelo botão "Testar modelo" da tela de Configurações, pra pegar
+    problemas (modelo restrito a agentic harness, nome errado, sem
+    créditos, etc.) antes de salvar. Só depende de OPENROUTER_API_KEY, não
+    do toggle LLM_ENABLED — testar não é o mesmo que usar em produção.
+
+    Alguns modelos gratuitos do OpenRouter (ex.: alguns `:free` de coding
+    agent) recusam chat.completions comum com 403 — daí a utilidade de
+    testar antes de salvar como o modelo em uso."""
+    if not model or not model.strip():
+        return {"ok": False, "error": "Informe um modelo."}
+    client = _get_client()
+    if client is None:
+        return {"ok": False, "error": "OPENROUTER_API_KEY não configurada no servidor (.env)."}
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Responda apenas a palavra: ok"}],
+        )
+        text = (resp.choices[0].message.content or "").strip()
+        return {"ok": True, "sample": text[:100]}
+    except PermissionDeniedError as e:
+        return {"ok": False, "error": f"Modelo recusou a chamada (403 — pode ser restrito a agentic harnesses): {_error_message(e)}"}
+    except NotFoundError as e:
+        return {"ok": False, "error": f"Modelo não encontrado (404 — confira o slug): {_error_message(e)}"}
+    except RateLimitError as e:
+        return {"ok": False, "error": f"Rate limit (429 — modelos :free têm limite diário por conta): {_error_message(e)}"}
+    except AuthenticationError as e:
+        return {"ok": False, "error": f"OPENROUTER_API_KEY inválida (401): {_error_message(e)}"}
+    except APIStatusError as e:
+        return {"ok": False, "error": f"Erro da API ({e.status_code}): {_error_message(e)}"}
+    except APIConnectionError:
+        return {"ok": False, "error": "Erro de rede ao conectar no OpenRouter."}
+    except Exception as e:
+        logger.exception("test_model falhou")
+        return {"ok": False, "error": _error_message(e)}
 
 
 VALID_INTENTS = {"ED_NUTRI", "TED_PERSONAL", "MIXED", "ORCHESTRATOR"}

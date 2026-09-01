@@ -173,3 +173,13 @@ class LLMConfigOut(BaseModel):
     enabled: bool
     model: str
     updated_at: datetime
+
+
+class LLMTestIn(BaseModel):
+    model: str
+
+
+class LLMTestOut(BaseModel):
+    ok: bool
+    sample: Optional[str] = None
+    error: Optional[str] = None

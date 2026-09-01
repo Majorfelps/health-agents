@@ -206,3 +206,71 @@ def test_endpoint_llm_models_usa_catalogo_mockado(monkeypatch, client):
     r = client.get("/api/v1/llm/models?free_only=true")
     assert r.status_code == 200
     assert r.json() == {"models": [{"id": "fake/model:free"}]}
+
+
+# ── test_model() (botão "Testar modelo" da tela de Configurações) ─────────
+
+class _FakeMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class _FakeChoice:
+    def __init__(self, content):
+        self.message = _FakeMessage(content)
+
+
+class _FakeResponse:
+    def __init__(self, content):
+        self.choices = [_FakeChoice(content)]
+
+
+class _FakeCompletions:
+    def __init__(self, response=None, exc=None):
+        self._response = response
+        self._exc = exc
+
+    def create(self, **kwargs):
+        if self._exc is not None:
+            raise self._exc
+        return self._response
+
+
+class _FakeClient:
+    def __init__(self, completions: _FakeCompletions):
+        self.chat = type("_Chat", (), {"completions": completions})()
+
+
+def test_test_model_sem_model():
+    assert llm.test_model("") == {"ok": False, "error": "Informe um modelo."}
+
+
+def test_test_model_sem_api_key_configurada():
+    # settings.openrouter_api_key vazia no ambiente de teste (sem .env real)
+    r = llm.test_model("qualquer/modelo")
+    assert r["ok"] is False
+    assert "OPENROUTER_API_KEY" in r["error"]
+
+
+def test_test_model_sucesso(monkeypatch):
+    fake = _FakeClient(_FakeCompletions(response=_FakeResponse("ok")))
+    monkeypatch.setattr(llm, "_get_client", lambda: fake)
+
+    r = llm.test_model("algum/modelo")
+    assert r == {"ok": True, "sample": "ok"}
+
+
+def test_test_model_erro_generico_vira_ok_false(monkeypatch):
+    fake = _FakeClient(_FakeCompletions(exc=RuntimeError("modelo bugado")))
+    monkeypatch.setattr(llm, "_get_client", lambda: fake)
+
+    r = llm.test_model("algum/modelo")
+    assert r["ok"] is False
+    assert "modelo bugado" in r["error"]
+
+
+def test_endpoint_llm_test_usa_service_mockado(monkeypatch, client):
+    monkeypatch.setattr(llm, "test_model", lambda model: {"ok": False, "error": "403 recusado"})
+    r = client.post("/api/v1/llm/test", json={"model": "algum/modelo:free"})
+    assert r.status_code == 200
+    assert r.json() == {"ok": False, "sample": None, "error": "403 recusado"}

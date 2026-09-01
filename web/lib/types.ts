@@ -93,6 +93,12 @@ export interface LLMConfig {
   updated_at: string;
 }
 
+export interface LLMTestResult {
+  ok: boolean;
+  sample?: string | null;
+  error?: string | null;
+}
+
 export interface LLMModel {
   id: string;
   name: string;

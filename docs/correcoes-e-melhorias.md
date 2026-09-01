@@ -167,15 +167,28 @@ mudança de prioridade sugerida em relação ao que já estava no `README.md`:
     OpenRouter (público, não precisa de config) — filtra só os gratuitos
     por padrão, bons pra testar. Confirmado ao vivo: modelos `:free` têm
     rate limit de ~50 req/dia por conta.
-  - 19 testes em `api/tests/test_llm.py` (mocks — sem chamada de rede
-    real no CI), cobrindo fallback, endpoints e a persistência da config.
+  - **`POST /api/v1/llm/test`** + botão "Testar modelo" na tela de
+    Configurações: faz uma chamada real (sem persistir nada) pro modelo
+    digitado/selecionado, antes de salvar. Adicionado depois que o
+    usuário reportou o Master Agent "respondendo de forma automatizada" —
+    na real era o fallback funcionando certo: o modelo escolhido
+    (`thinkingmachines/inkling:free`) é restrito a "agentic harnesses" no
+    OpenRouter e recusa chat comum com 403. O teste pega esse tipo de
+    problema antes de salvar como modelo em uso, com a mensagem de erro
+    exibida na UI.
+  - 24 testes em `api/tests/test_llm.py` (mocks — sem chamada de rede
+    real no CI), cobrindo fallback, endpoints, persistência da config e
+    `test_model()`.
   - Validado ao vivo com chave real do OpenRouter: os 5 caminhos de
     intenção, troca de modelo via `curl` e via UI (browser) sem restart,
-    volta ao determinístico quando o modelo escolhido bate rate limit.
-    Dois bugs achados e corrigidos no processo: o modelo envolvia o JSON
-    da classificação em ` ```json ``` ` (quebrava o parser) e usava
-    markdown (`**`, `#`, `---`) que aparecia literal na UI (texto puro,
-    sem parser de markdown).
+    volta ao determinístico quando o modelo escolhido bate rate limit ou
+    é restrito a agentic harnesses, e o botão "Testar modelo" pegando
+    esse último caso na hora (antes de salvar) tanto via `curl` quanto
+    clicando na UI. Três bugs achados e corrigidos no processo: o modelo
+    envolvia o JSON da classificação em ` ```json ``` ` (quebrava o
+    parser), usava markdown (`**`, `#`, `---`) que aparecia literal na UI
+    (texto puro, sem parser de markdown), e a falta de uma forma de
+    validar um modelo antes de salvá-lo como o modelo em uso.
 - [ ] Exportar PDF de relatório semanal.
 - [ ] Bot Telegram/WhatsApp opcional reusando a API atual.
 

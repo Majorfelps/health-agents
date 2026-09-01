@@ -39,6 +39,16 @@ def status(db: Session = Depends(get_db)):
     return {"enabled": llm_service.is_enabled(cfg.enabled, cfg.model), "model": cfg.model or None}
 
 
+@router.post("/test", response_model=s.LLMTestOut)
+def test_model(payload: s.LLMTestIn):
+    """Faz uma chamada mínima de verdade pro modelo, sem salvar nada — use
+    antes de PUT /llm/config pra confirmar que o modelo escolhido funciona
+    pra chat comum (alguns modelos gratuitos são restritos a agentic
+    harnesses e recusam com 403). Só precisa de OPENROUTER_API_KEY no
+    .env, não do toggle LLM_ENABLED."""
+    return llm_service.test_model(payload.model)
+
+
 @router.get("/models")
 def list_models(
     free_only: bool = Query(

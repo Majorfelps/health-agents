@@ -104,6 +104,7 @@ npm run dev
 | `GET`  | `/api/v1/plan/training` / `PUT` | CRUD plano treino |
 | `POST` | `/api/v1/checkins` | Check-in (humor, fome, sono, água) |
 | `GET`  | `/api/v1/llm/config` / `PUT` | Liga/desliga o LLM e troca o modelo — vale no próximo chat, sem restart |
+| `POST` | `/api/v1/llm/test` | Testa um modelo de verdade antes de salvar (não persiste nada) |
 | `GET`  | `/api/v1/llm/status` | LLM habilitado? Qual modelo (sem expor a key) |
 | `GET`  | `/api/v1/llm/models?free_only=true` | Catálogo de modelos do OpenRouter (só gratuitos por padrão — ver "Integração com LLM" abaixo) |
 | `GET`  | `/health` | Healthcheck |
@@ -165,6 +166,13 @@ ligar respostas geradas por LLM via [OpenRouter](https://openrouter.ai/models)
 
    # catálogo inteiro
    curl "http://localhost:8088/api/v1/llm/models?free_only=false" | jq
+
+   # testa o modelo ANTES de salvar (chamada real, não persiste nada) —
+   # alguns modelos :free são restritos a "agentic harnesses" e recusam
+   # chat comum com 403; o teste pega isso na hora
+   curl -X POST http://localhost:8088/api/v1/llm/test \
+     -H "Content-Type: application/json" \
+     -d '{"model": "anthropic/claude-haiku-4.5"}'
 
    # liga e escolhe o modelo — vale no próximo chat, sem reiniciar nada
    curl -X PUT http://localhost:8088/api/v1/llm/config \
