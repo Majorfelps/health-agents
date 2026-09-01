@@ -58,8 +58,8 @@ def today_totals(db: Session, user_id: int) -> dict:
     rows = db.query(
         func.coalesce(func.sum(m.Meal.calories), 0).label("kcal"),
         func.coalesce(func.sum(m.Meal.protein_g), 0).label("P"),
-        func.coalesce(func.sum(m.Meal.carbs_g), 0).label("F"),
-        func.coalesce(func.sum(m.Meal.fat_g), 0).label("C"),
+        func.coalesce(func.sum(m.Meal.carbs_g), 0).label("C"),
+        func.coalesce(func.sum(m.Meal.fat_g), 0).label("F"),
     ).filter(
         m.Meal.user_id == user_id,
         m.Meal.logged_at >= today_start,
