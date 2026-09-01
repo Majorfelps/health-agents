@@ -59,6 +59,11 @@ GREETING_TERMS = {
     "bom dia", "boa tarde", "boa noite",
 }
 
+# GREETING_TERMS guarda frases inteiras ("bom dia"); a comparação por
+# subconjunto de tokens abaixo precisa das palavras soltas, senão
+# "bom dia" nunca bate (tokens = {"bom", "dia"}, não a frase toda).
+_GREETING_TOKENS = {w for g in GREETING_TERMS for w in g.split()}
+
 SAFETY_TERMS = {
     "dor no peito", "dor torácica", "tontura", "desmaiei", "desmaio",
     "falta de ar", "nao consigo respirar", "não consigo respirar",
@@ -123,7 +128,7 @@ def classify(text: str) -> Classification:
     # 2. GREETING
     greeting_hits = [g for g in GREETING_TERMS if g in tn]
     is_short = len(tokens) <= 4
-    if (tokens <= GREETING_TERMS) or (is_short and greeting_hits and len(tokens - GREETING_TERMS) <= 1):
+    if (tokens <= _GREETING_TOKENS) or (is_short and greeting_hits and len(tokens - _GREETING_TOKENS) <= 1):
         return Classification(
             intent="ORCHESTRATOR", confidence=0.85,
             matched_terms=tuple(greeting_hits),
