@@ -119,7 +119,7 @@ npm run dev
 | `skills/health/personal-trainer/SKILL.md` | persona em `agents.py::reply_personal` | Idem |
 | `skills/health/master-agent/SKILL.md` | persona em `agents.py::reply_*` | Classificação + templates |
 | `skills/health/ted-corrigido/SKILL.md` | `plan_training` editável na UI | Plano da semana agora vive no DB |
-| `cron/ceb6a1ca` (Relatório Jira) | — (não portado) | Fora do escopo deste app |
+
 
 ## O que mudou de design
 
