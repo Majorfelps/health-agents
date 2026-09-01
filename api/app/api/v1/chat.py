@@ -46,11 +46,13 @@ def chat(
     today_totals = repo.today_totals(db, user.id)
 
     # 4. Gerar resposta
+    protocolo = user.plan_training.protocolo if user.plan_training else None
     reply = agents.gerar_resposta(
         intent=cls.intent,
         user_msg=payload.message,
         profile=profile,
         today_totals=today_totals,
+        protocolo=protocolo,
     )
 
     # 5. Se o agente detectou refeição, grava em meals

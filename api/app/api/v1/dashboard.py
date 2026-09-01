@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.schemas import schemas as s
 from app.services import repository as repo
-from app.services.agents import PLANO_SEMANAL, DIAS_PT
+from app.services.agents import DIAS_PT, resolve_treino_do_dia
 from datetime import date
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -26,7 +26,8 @@ def dashboard(
     last_ck = repo.last_checkin(db, user.id)
 
     weekday = date.today().weekday()
-    plano = PLANO_SEMANAL[weekday]
+    protocolo = user.plan_training.protocolo if user.plan_training else None
+    plano = resolve_treino_do_dia(protocolo, weekday)
 
     return s.DashboardOut(
         user=s.UserOut.model_validate(user),

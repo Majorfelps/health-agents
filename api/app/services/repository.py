@@ -9,6 +9,7 @@ from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
 
 from app.models import models as m
+from app.services.agents import PLANO_SEMANAL_PADRAO
 
 
 # ── Users ────────────────────────────────────────────────────────────────────
@@ -41,11 +42,7 @@ def seed_default_plans(db: Session, user: m.User) -> None:
     if not user.plan_training:
         plan = m.PlanTraining(
             user_id=user.id,
-            protocolo={
-                0: "UPPER A", 1: "LOWER A", 2: "CARDIO HIIT",
-                3: "UPPER B", 4: "LOWER B", 5: "CARDIO LISS",
-                6: "DESCANSO ATIVO",
-            },
+            protocolo=dict(PLANO_SEMANAL_PADRAO),
         )
         db.add(plan)
     db.commit()

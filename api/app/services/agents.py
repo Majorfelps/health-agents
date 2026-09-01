@@ -38,11 +38,19 @@ DEFAULT_USER_PROFILE = {
 }
 
 
-# ── Plano semanal ED o Personal (espelha PLANO_SEMANAL do master_agent) ──────
+# ── Biblioteca de treinos ED o Personal (espelha PLANO_SEMANAL do master_agent) ─
+#
+# WORKOUT_LIBRARY guarda a definição completa (foco/séries/exercícios) de
+# cada treino, indexada pelo *nome*. PLANO_SEMANAL_PADRAO mapeia dia da
+# semana → nome, e é só o valor inicial usado no seed de PlanTraining
+# (repository.seed_default_plans). O treino "de verdade" de cada usuário
+# vem de PlanTraining.protocolo (editável em /plan), resolvido via
+# resolve_treino_do_dia() abaixo — PLANO_SEMANAL_PADRAO é o fallback para
+# quando o usuário ainda não tem plano salvo, ou escreveu um nome livre
+# que não está na biblioteca.
 
-PLANO_SEMANAL = {
-    0: {  # segunda
-        "nome": "UPPER A",
+WORKOUT_LIBRARY: dict[str, dict] = {
+    "UPPER A": {
         "foco": "peito + costas",
         "series": 18,
         "exercicios": [
@@ -54,8 +62,7 @@ PLANO_SEMANAL = {
             ("Abdominal supra", "3×15", "RPE 7", "60s"),
         ],
     },
-    1: {  # terça
-        "nome": "LOWER A",
+    "LOWER A": {
         "foco": "quadríceps + posterior",
         "series": 18,
         "exercicios": [
@@ -67,8 +74,7 @@ PLANO_SEMANAL = {
             ("Panturrilha em pé", "3×15", "RPE 7", "60s"),
         ],
     },
-    2: {  # quarta
-        "nome": "CARDIO HIIT 20min",
+    "CARDIO HIIT 20min": {
         "foco": "cardio alta intensidade",
         "exercicios": [
             ("Aquecimento esteira", "5min", "Zona 1", "—"),
@@ -76,8 +82,7 @@ PLANO_SEMANAL = {
             ("Desaquecimento", "3min", "Zona 1", "—"),
         ],
     },
-    3: {  # quinta
-        "nome": "UPPER B",
+    "UPPER B": {
         "foco": "ombros + braços",
         "exercicios": [
             ("Desenvolvimento halter", "3×10", "RPE 7", "90s"),
@@ -88,8 +93,7 @@ PLANO_SEMANAL = {
             ("Elevação lateral", "3×15", "RPE 7", "60s"),
         ],
     },
-    4: {  # sexta
-        "nome": "LOWER B",
+    "LOWER B": {
         "foco": "posterior + glúteo",
         "exercicios": [
             ("Terra romeno", "3×8–10", "RPE 7", "90s"),
@@ -100,15 +104,13 @@ PLANO_SEMANAL = {
             ("Prancha", "3×45s", "RPE 7", "45s"),
         ],
     },
-    5: {  # sábado
-        "nome": "CARDIO LISS 35min",
+    "CARDIO LISS 35min": {
         "foco": "cardio zona 2",
         "exercicios": [
             ("Esteira / caminhada 6–7km/h", "35min", "Zona 2", "—"),
         ],
     },
-    6: {  # domingo
-        "nome": "DESCANSO ATIVO",
+    "DESCANSO ATIVO": {
         "foco": "recuperação",
         "exercicios": [
             ("Caminhada leve", "30min", "—", "—"),
@@ -117,7 +119,36 @@ PLANO_SEMANAL = {
     },
 }
 
+PLANO_SEMANAL_PADRAO: dict[int, str] = {
+    0: "UPPER A",       # segunda
+    1: "LOWER A",        # terça
+    2: "CARDIO HIIT 20min",  # quarta
+    3: "UPPER B",        # quinta
+    4: "LOWER B",         # sexta
+    5: "CARDIO LISS 35min",  # sábado
+    6: "DESCANSO ATIVO",  # domingo
+}
+
 DIAS_PT = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+
+
+def resolve_treino_do_dia(protocolo: dict | None, weekday: int) -> dict:
+    """Resolve o treino do dia a partir do PlanTraining.protocolo do usuário
+    (editável via /api/v1/plan/training), com fallback pro padrão quando o
+    usuário não tem plano salvo ou o nome não está na biblioteca."""
+    nome = None
+    if protocolo:
+        nome = protocolo.get(str(weekday), protocolo.get(weekday))
+    if not nome:
+        nome = PLANO_SEMANAL_PADRAO[weekday]
+
+    detalhes = WORKOUT_LIBRARY.get(nome)
+    if detalhes is None:
+        # Nome customizado que o usuário digitou e não está na biblioteca —
+        # mostra só o nome, sem inventar exercícios.
+        detalhes = {"foco": "personalizado", "exercicios": []}
+
+    return {"nome": nome, **detalhes}
 
 
 # ── Estimativa de macros (espelha FOOD_TABLE + estimate_meal_heuristic) ─────
@@ -248,11 +279,11 @@ def reply_safety(profile: dict) -> AgentReply:
     )
 
 
-def reply_mixed(profile: dict, user_msg: str) -> AgentReply:
+def reply_mixed(profile: dict, user_msg: str, protocolo: dict | None = None) -> AgentReply:
     return AgentReply(
         text=(
             "🤖 *Master Agent* — entendi que envolve nutrição + treino, vou te dar a visão integrada.\n\n"
-            f"💪 Treino: {_treino_hoje_resumo()}\n"
+            f"💪 Treino: {_treino_hoje_resumo(protocolo)}\n"
             f"🥗 Dieta: {_dieta_resumo(profile)}\n\n"
             "Quer que eu detalhe um dos lados? (foco treino / foco nutrição)"
         ),
@@ -308,9 +339,10 @@ def reply_nutri(profile: dict, user_msg: str, today_totals: dict | None = None) 
     )
 
 
-def reply_personal(profile: dict, user_msg: str) -> AgentReply:
-    """Resposta do ED o Personal. Por padrão mostra o treino do dia."""
-    hoje = _treino_hoje()
+def reply_personal(profile: dict, user_msg: str, protocolo: dict | None = None) -> AgentReply:
+    """Resposta do ED o Personal. Por padrão mostra o treino do dia
+    (resolvido do plano do usuário — ver resolve_treino_do_dia)."""
+    hoje = _treino_hoje(protocolo)
     if hoje["nome"] == "DESCANSO ATIVO":
         body = (
             f"💪 *ED o Personal* — hoje é *{DIAS_PT[date.today().weekday()]}*, dia de descanso ativo 🧘\n\n"
@@ -318,6 +350,13 @@ def reply_personal(profile: dict, user_msg: str) -> AgentReply:
             f"   • Caminhada leve 30min\n"
             f"   • Alongamento global 15min\n\n"
             f"Recuperação também é treino. Descanse bem!"
+        )
+    elif not hoje["exercicios"]:
+        body = (
+            f"💪 *ED o Personal* — *{DIAS_PT[date.today().weekday()]} → {hoje['nome']}*\n\n"
+            "Ainda não tenho os exercícios desse treino cadastrados — edita em "
+            "*Planos → Treino Semanal* ou usa um dos nomes padrão "
+            "(UPPER A/B, LOWER A/B, CARDIO HIIT/LISS, DESCANSO ATIVO)."
         )
     else:
         linhas = [
@@ -334,13 +373,13 @@ def reply_personal(profile: dict, user_msg: str) -> AgentReply:
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
-def _treino_hoje() -> dict:
-    """Retorna o treino de hoje (espelha a PLANO_SEMANAL)."""
-    return PLANO_SEMANAL[date.today().weekday()]
+def _treino_hoje(protocolo: dict | None = None) -> dict:
+    """Retorna o treino de hoje, do plano do usuário (com fallback pro padrão)."""
+    return resolve_treino_do_dia(protocolo, date.today().weekday())
 
 
-def _treino_hoje_resumo() -> str:
-    h = _treino_hoje()
+def _treino_hoje_resumo(protocolo: dict | None = None) -> str:
+    h = _treino_hoje(protocolo)
     return f"{DIAS_PT[date.today().weekday()]} = {h['nome']} ({h['foco']})"
 
 
@@ -357,8 +396,13 @@ def gerar_resposta(
     user_msg: str,
     profile: dict | None = None,
     today_totals: dict | None = None,
+    protocolo: dict | None = None,
 ) -> AgentReply:
-    """Despacho principal: dada uma intenção, retorna a resposta do agente certo."""
+    """Despacho principal: dada uma intenção, retorna a resposta do agente certo.
+
+    `protocolo` é o PlanTraining.protocolo do usuário (dia da semana → nome
+    do treino), usado para resolver o treino de hoje nas intents que falam
+    de treino (TED_PERSONAL / MIXED)."""
     profile = profile or DEFAULT_USER_PROFILE
     if intent == "SAFETY_ALERT":
         return reply_safety(profile)
@@ -374,7 +418,7 @@ def gerar_resposta(
     if intent == "ED_NUTRI":
         return reply_nutri(profile, user_msg, today_totals)
     if intent == "TED_PERSONAL":
-        return reply_personal(profile, user_msg)
+        return reply_personal(profile, user_msg, protocolo)
     if intent == "MIXED":
-        return reply_mixed(profile, user_msg)
+        return reply_mixed(profile, user_msg, protocolo)
     return reply_unknown(profile, user_msg)

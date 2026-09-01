@@ -65,19 +65,34 @@ Optou-se pela Opção B (Alembic como fonte única de verdade do schema).
   não tenta recriar nada (idempotente), fluxo de chat com refeição
   funcionando com F/C corretos.
 
-## Etapa 4 — Plano de treino editável (fechar o gap funcional)
+## Etapa 4 — Plano de treino editável (fechar o gap funcional) ✅ concluída (2026-09-01)
 
-- [ ] **Fazer `/workouts/today`, o dashboard e o chat lerem `plan_training.protocolo`
-  do banco** em vez do dicionário estático `PLANO_SEMANAL` em `agents.py`.
-  Hoje o `PUT /api/v1/plan/training` grava no banco mas nada lê esse valor —
-  editar o plano pela UI (`web/app/plan/page.tsx`) não muda o que aparece
-  como "treino de hoje".
-  - Manter `PLANO_SEMANAL` só como seed inicial (já é usado assim em
-    `repository.seed_default_plans`).
-  - Ajustar `api/app/api/v1/workouts.py::today_workout` e
-    `api/app/api/v1/dashboard.py::dashboard` para buscar
-    `user.plan_training.protocolo[weekday]` com fallback pro estático se
-    vazio.
+- [x] **`/workouts/today`, o dashboard e o chat agora lêem `plan_training.protocolo`
+  do banco.** A UI (`web/app/plan/page.tsx`) só edita o *nome* do treino de
+  cada dia (texto livre), não a lista de exercícios — então a solução foi
+  separar em `api/app/services/agents.py`:
+  - `WORKOUT_LIBRARY`: dict nome → {foco, séries, exercícios} (era o antigo
+    `PLANO_SEMANAL`, agora indexado por nome em vez de dia da semana).
+  - `PLANO_SEMANAL_PADRAO`: dict dia da semana → nome, usado só como seed
+    inicial (`repository.seed_default_plans`) e como fallback.
+  - `resolve_treino_do_dia(protocolo, weekday)`: resolve o nome salvo pelo
+    usuário na biblioteca; nome customizado (fora da biblioteca) degrada
+    graciosamente — mostra o nome, sem inventar exercícios, com um aviso
+    no chat orientando a usar um dos nomes padrão.
+  - `api/app/api/v1/workouts.py::today_workout`, `dashboard.py::dashboard`
+    e `chat.py` (via `agents.gerar_resposta(..., protocolo=...)`) agora
+    passam `user.plan_training.protocolo` para o resolver.
+  - Corrigido de quebra um bug latente no seed: `seed_default_plans` grava
+    `"CARDIO HIIT"`/`"CARDIO LISS"` sem o sufixo de duração, que nunca
+    batia com as chaves da biblioteca (`"CARDIO HIIT 20min"` etc.) — agora
+    usa `PLANO_SEMANAL_PADRAO`, com os nomes corretos, como única fonte.
+- Validado ao vivo: troquei o treino de terça (hoje) via `PUT
+  /plan/training` para um nome customizado → dashboard, `/workouts/today`
+  e o chat ("qual o treino de hoje?") mostraram o fallback consistente nos
+  três lugares; troquei para outro nome da biblioteca (UPPER B) → os três
+  refletiram os exercícios corretos; revertido pro padrão e conferido
+  visualmente no browser (dashboard renderizando LOWER A com macros ainda
+  corretos da Etapa 1).
 
 ## Etapa 5 — Testes e cobertura
 
