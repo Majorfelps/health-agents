@@ -223,6 +223,27 @@ O que **nunca** muda, mesmo com LLM habilitado:
   botão "Testar modelo" em `/settings`) antes de trocar o modelo em uso,
   pra pegar esses problemas na hora em vez de só ver o fallback silencioso.
 
+## Imagens de demonstração de exercício (ED o Personal)
+
+Quando a mensagem menciona um exercício específico (ex: "como faz o supino
+reto barra?") ou o treino do dia inclui um exercício mapeado, o ED o
+Personal anexa uma foto real de demonstração no chat — via
+[wger.de](https://wger.de) (banco de exercícios aberto, CC0/CC-BY-SA, sem
+API key).
+
+Avaliamos gerar imagem por IA primeiro: **nenhum modelo gratuito da
+OpenRouter gera imagem** (catálogo checado ao vivo — só 11 modelos com
+saída de imagem no total, todos pagos), e além do custo, geração por IA
+não é confiável pra mostrar postura/forma corretas de um exercício. Fotos
+reais de um banco aberto resolvem isso sem custo nenhum.
+
+É um **mapeamento curado, não busca ao vivo** — a API pública do wger não
+tem busca por nome funcional (só filtro por match exato), então
+`api/app/services/exercise_images.py` mapeia manualmente os exercícios do
+`WORKOUT_LIBRARY` que têm imagem real disponível (10 dos 30 atualmente).
+Exercício fora do mapeamento simplesmente não manda imagem — cai pro texto
+normal, sem quebrar nada. Pra adicionar mais, ver o docstring do arquivo.
+
 ## Próximos passos (roadmap)
 
 - [ ] Autenticação (OAuth2/JWT)

@@ -221,6 +221,7 @@ class AgentReply:
     agent: str
     intent: str
     detected_meal: Optional[dict] = None
+    image_url: Optional[str] = None
     metadata: Optional[dict] = None
 
 
@@ -280,6 +281,7 @@ def reply_safety(profile: dict) -> AgentReply:
 
 
 def reply_mixed(profile: dict, user_msg: str, protocolo: dict | None = None) -> AgentReply:
+    from app.services.exercise_images import find_image
     return AgentReply(
         text=(
             "🤖 *Master Agent* — entendi que envolve nutrição + treino, vou te dar a visão integrada.\n\n"
@@ -289,6 +291,7 @@ def reply_mixed(profile: dict, user_msg: str, protocolo: dict | None = None) -> 
         ),
         agent="master",
         intent="MIXED",
+        image_url=find_image(user_msg, _treino_hoje(protocolo)),
     )
 
 
@@ -368,7 +371,11 @@ def reply_personal(profile: dict, user_msg: str, protocolo: dict | None = None) 
         body = "\n".join(linhas) + (
             "\n\nBora! 🔥 Marca o ✅ quando terminar e me passa o RPE médio (1–10)."
         )
-    return AgentReply(text=body, agent="personal", intent="TED_PERSONAL")
+    from app.services.exercise_images import find_image
+    return AgentReply(
+        text=body, agent="personal", intent="TED_PERSONAL",
+        image_url=find_image(user_msg, hoje),
+    )
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -451,6 +458,7 @@ def _gerar_resposta_llm(
 ) -> AgentReply | None:
     from app.services import llm
     from app.services.classifier import looks_like_meal
+    from app.services.exercise_images import find_image
 
     agent = {"ED_NUTRI": "nutri", "TED_PERSONAL": "personal"}.get(intent, "master")
 
@@ -458,6 +466,7 @@ def _gerar_resposta_llm(
     if intent == "ED_NUTRI" and looks_like_meal(user_msg):
         detected_meal = estimate_macros(user_msg)
 
+    image_url = None
     context: dict = {"intent": intent}
     if water_detected_ml is not None:
         context["agua_detectada_nesta_mensagem_ml"] = water_detected_ml
@@ -470,14 +479,19 @@ def _gerar_resposta_llm(
             "refeicao_detectada_nesta_mensagem": detected_meal,
         }
     if intent in ("TED_PERSONAL", "MIXED"):
-        context["treino_hoje"] = _treino_hoje(protocolo)
+        treino = _treino_hoje(protocolo)
+        context["treino_hoje"] = treino
         context["dia_da_semana"] = DIAS_PT[date.today().weekday()]
         context["treino_de_hoje_ja_registrado_como_concluido"] = workout_logged_today
+        # imagem de demonstração é sempre resolvida por regra fixa (wger.de
+        # curado), nunca inventada/gerada pelo LLM
+        image_url = find_image(user_msg, treino)
+        context["imagem_de_demonstracao_anexada_nesta_resposta"] = image_url is not None
 
     text = llm.generate_reply_via_llm(agent, user_msg, context, llm_model)
     if text is None:
         return None
-    return AgentReply(text=text, agent=agent, intent=intent, detected_meal=detected_meal)
+    return AgentReply(text=text, agent=agent, intent=intent, detected_meal=detected_meal, image_url=image_url)
 
 
 def _gerar_resposta_deterministica(

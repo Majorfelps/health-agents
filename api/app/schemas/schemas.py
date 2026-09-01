@@ -139,6 +139,7 @@ class ChatOut(BaseModel):
     detected_meal: Optional[dict] = None
     detected_water_ml: Optional[float] = None
     detected_workout: bool = False
+    image_url: Optional[str] = None
     metadata: Optional[dict] = None
     message_id: Optional[int] = None
 

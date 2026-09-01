@@ -58,6 +58,7 @@ export default function ChatPage() {
         direction: "outbound",
         message: r.reply,
         intent: r.intent,
+        image_url: r.image_url,
         created_at: new Date().toISOString(),
       };
       setMessages((m) => [...m, replyMsg]);
@@ -97,6 +98,14 @@ export default function ChatPage() {
               <div key={i} className={clsx("bubble flex flex-col", isUser ? "bubble-out" : "bubble-in")}>
                 {!isUser && <div className="agent-tag">{agent.emoji} {agent.label}</div>}
                 <div>{m.message}</div>
+                {m.image_url && (
+                  <img
+                    src={m.image_url}
+                    alt="Demonstração do exercício"
+                    className="mt-2 rounded-lg max-w-full max-h-64 object-contain border border-gray-200"
+                    loading="lazy"
+                  />
+                )}
                 {!isUser && m.intent && (
                   <div className="intent-tag">
                     intent: {m.intent}

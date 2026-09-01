@@ -227,6 +227,44 @@ mudança de prioridade sugerida em relação ao que já estava no `README.md`:
     lista as refeições específicas do dia, não só o total.
 - [ ] Exportar PDF de relatório semanal.
 - [ ] Bot Telegram/WhatsApp opcional reusando a API atual.
+- [x] **Imagens de demonstração de exercício (ED o Personal)** ✅ concluído
+  (2026-09-01) — pedido: "avalie se algum modelo gratuito consegue criar
+  imagens pra que o ED Personal envie no chat".
+  - **Avaliação real, não hipotética**: consultei o catálogo completo da
+    OpenRouter (418 modelos) — só 11 têm saída de imagem, e nenhum é
+    gratuito. Testei uma chamada paga de verdade (`google/gemini-2.5-
+    flash-image`) e recebi 402 (conta sem crédito). Também descartei
+    geração por IA no geral pro caso de uso: não é confiável pra mostrar
+    postura/forma corretas de exercício.
+  - **Caminho escolhido**: wger.de (banco de exercícios aberto, CC0/
+    CC-BY-SA, sem API key). Descoberto no processo: a busca por nome da
+    API pública deles (`search`/`language` como query param) não
+    funciona de verdade — só filtro exato por `name`. Contornado
+    baixando o catálogo inteiro (3335 traduções) e cruzando por
+    palavra-chave em código, uma vez, pra montar o mapeamento.
+  - Resultado real da cobertura: 23/30 exercícios do `WORKOUT_LIBRARY`
+    têm correspondência no wger (os outros 7 são atividades genéricas
+    tipo "caminhada leve"); desses 23, só 10 têm imagem cadastrada de
+    verdade (dado aberto/comunitário é irregular). Mapeamento curado em
+    `api/app/services/exercise_images.py`.
+  - `find_image(user_msg, treino)`: primeiro tenta achar um exercício
+    citado explicitamente na mensagem (mais específico), senão cai pro
+    primeiro exercício do treino do dia que tem imagem. Sempre resolvido
+    por regra fixa (nunca pelo LLM) — mesmo padrão de `detected_meal`.
+  - `AgentReply.image_url` → `ChatOut.image_url` → persistido no `extra`
+    do `AgentMessage` outbound → exposto em `GET /chat/history` — a
+    imagem sobrevive a reload de página, não só à resposta imediata.
+  - Prompt do ED o Personal avisado quando uma imagem foi anexada
+    (`imagem_de_demonstracao_anexada_nesta_resposta`), pra comentar
+    naturalmente ("olha a foto que mandei") sem inventar descrição da
+    imagem.
+  - Web: `<img>` na bolha do chat (`web/app/chat/page.tsx`), com
+    `loading="lazy"` e limite de altura.
+  - 12 testes novos (9 em `test_exercise_images.py` + 2 em
+    `test_chat_endpoint.py` + 1 em `test_llm.py`). Validado ao vivo:
+    imagem real renderizada no browser pra "supino reto barra" e
+    "agachamento livre", persistindo após reload; LLM comentou a foto
+    anexada corretamente sem inventar detalhes dela.
 
 ---
 

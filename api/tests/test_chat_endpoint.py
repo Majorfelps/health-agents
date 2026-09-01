@@ -109,6 +109,24 @@ def test_chat_pergunta_sobre_treino_nao_persiste_exercise_log(client):
     assert workouts == []
 
 
+def test_chat_exercicio_mencionado_anexa_imagem_de_demonstracao(client):
+    r = client.post("/api/v1/chat", json={"message": "quero fazer supino reto barra hoje"})
+    body = r.json()
+    assert body["intent"] == "TED_PERSONAL"
+    assert body["image_url"] is not None
+    assert body["image_url"].startswith("https://wger.de/")
+
+    # a imagem também aparece no histórico (persistida no extra do outbound)
+    history = client.get("/api/v1/chat/history").json()
+    outbound = [h for h in history if h["direction"] == "outbound"][-1]
+    assert outbound["image_url"] == body["image_url"]
+
+
+def test_chat_saudacao_nao_anexa_imagem(client):
+    r = client.post("/api/v1/chat", json={"message": "oi"})
+    assert r.json()["image_url"] is None
+
+
 def test_chat_persist_false_nao_grava_agua_nem_treino(client):
     client.post("/api/v1/chat", json={"message": "bebi 500ml de água", "persist": False})
     client.post("/api/v1/chat", json={"message": "treinei hoje", "persist": False})

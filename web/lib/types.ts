@@ -72,6 +72,7 @@ export interface ChatMessage {
   direction: "inbound" | "outbound";
   message: string;
   intent?: string;
+  image_url?: string | null;
   created_at?: string;
 }
 
@@ -84,6 +85,9 @@ export interface ChatResponse {
   agent: string;
   reply: string;
   detected_meal: { descricao: string; kcal: number; P: number; F: number; C: number } | null;
+  detected_water_ml: number | null;
+  detected_workout: boolean;
+  image_url: string | null;
   message_id: number | null;
 }
 

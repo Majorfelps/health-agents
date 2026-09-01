@@ -191,6 +191,33 @@ def test_gerar_resposta_llm_recebe_memoria_do_dia_no_contexto(monkeypatch):
     assert ctx["treino_de_hoje_ja_registrado_como_concluido"] is False
 
 
+def test_gerar_resposta_llm_anexa_imagem_de_exercicio_mencionado(monkeypatch):
+    """image_url é sempre resolvido por regra fixa (exercise_images.py, com
+    base no wger.de), nunca inventado pelo LLM — mas o contexto avisa o LLM
+    que uma imagem foi anexada, pra ele poder referenciar naturalmente."""
+    from app.services.exercise_images import EXERCISE_IMAGES
+
+    captured = {}
+
+    def _fake_generate(agent, user_msg, context, model):
+        captured["context"] = context
+        return "ok"
+
+    monkeypatch.setattr(llm, "is_enabled", lambda *a, **k: True)
+    monkeypatch.setattr(llm, "generate_reply_via_llm", _fake_generate)
+
+    reply = agents.gerar_resposta(
+        intent="TED_PERSONAL",
+        user_msg="como faz o supino reto barra?",
+        profile=agents.DEFAULT_USER_PROFILE,
+        llm_enabled=True,
+        llm_model="x/x",
+    )
+
+    assert reply.image_url == EXERCISE_IMAGES["Supino reto barra"]
+    assert captured["context"]["imagem_de_demonstracao_anexada_nesta_resposta"] is True
+
+
 def test_gerar_resposta_safety_alert_nunca_chama_llm(monkeypatch):
     monkeypatch.setattr(llm, "is_enabled", lambda *a, **k: True)
 

@@ -98,14 +98,17 @@ def chat(
         )
         db.add(in_msg)
         db.flush()
-        # outbound
+        # outbound (extra própria, com a imagem — não faz sentido no inbound)
+        extra_out = dict(extra)
+        if reply.image_url:
+            extra_out["image_url"] = reply.image_url
         out_msg = m.AgentMessage(
             user_id=user.id,
             agent=reply.agent,
             direction="outbound",
             message=reply.text,
             intent=cls.intent,
-            extra=extra,
+            extra=extra_out,
         )
         db.add(out_msg)
         db.flush()
@@ -158,6 +161,7 @@ def chat(
         detected_meal=reply.detected_meal,
         detected_water_ml=water_detected_ml,
         detected_workout=workout_completed_now,
+        image_url=reply.image_url,
         metadata=extra,
         message_id=message_id,
     )
@@ -198,6 +202,7 @@ def history(
             "direction": m.direction,
             "message": m.message,
             "intent": m.intent,
+            "image_url": (m.extra or {}).get("image_url"),
             "created_at": m.created_at.isoformat(),
         }
         for m in msgs
