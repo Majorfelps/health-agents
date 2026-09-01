@@ -1,0 +1,1 @@
+{"adapter":"evolution-optional","mode":"web-first","whatsapp_fallback":true,"instance":"hermes2","note":"Can be switched to Evolution API (migrar) via .env EVOLUTION_INSTANCE"}
