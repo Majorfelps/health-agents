@@ -8,9 +8,11 @@ services:
       POSTGRES_DB: health_agents
     volumes:
       - db_data:/var/lib/postgresql/data
-      - ../db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-    ports:
-      - "5432:5432"
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    # Não expõe 5432 ao host (postgres do n8n já usa a porta).
+    # API acessa via DNS interno `db:5432`.
+    expose:
+      - "5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U health -d health_agents"]
       interval: 5s
@@ -19,7 +21,7 @@ services:
 
   api:
     build:
-      context: ../api
+      context: ./api
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
@@ -29,12 +31,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Portainer já ocupa 8000 no host → expor a API em 8088
     ports:
-      - "8000:8000"
+      - "8088:8000"
 
   web:
     build:
-      context: ../web
+      context: ./web
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:

@@ -54,6 +54,18 @@ export interface DashboardOut {
   last_checkin: any | null;
 }
 
+export interface CheckinOut {
+  id: number;
+  user_id: number;
+  type: string;
+  mood: string | null;
+  hunger_level: number | null;
+  sleep_hours: number | null;
+  water_liters: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface ChatMessage {
   id?: number;
   agent: string;
