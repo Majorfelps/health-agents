@@ -399,12 +399,22 @@ def gerar_resposta(
     protocolo: dict | None = None,
     llm_enabled: bool = False,
     llm_model: str = "",
+    meals_today: list[dict] | None = None,
+    water_detected_ml: float | None = None,
+    workout_logged_today: bool = False,
 ) -> AgentReply:
     """Despacho principal: dada uma intenção, retorna a resposta do agente certo.
 
     `protocolo` é o PlanTraining.protocolo do usuário (dia da semana → nome
     do treino), usado para resolver o treino de hoje nas intents que falam
     de treino (TED_PERSONAL / MIXED).
+
+    `meals_today`/`water_detected_ml`/`workout_logged_today` são "memória do
+    dia" (calculada em chat.py a partir do banco, antes desta mensagem ser
+    persistida) — só usados pra enriquecer o contexto passado ao LLM, pra
+    ele responder de forma correta pro momento (o que já foi comido hoje, se
+    já bebeu água, se o treino de hoje já foi registrado). Não afetam o
+    caminho determinístico.
 
     `llm_enabled`/`llm_model` vêm da config do LLM lida do banco (ver
     repository.get_llm_config() — editável via API, sem restart). Se
@@ -418,7 +428,10 @@ def gerar_resposta(
     if intent != "SAFETY_ALERT":
         from app.services import llm
         if llm.is_enabled(llm_enabled, llm_model):
-            resposta_llm = _gerar_resposta_llm(intent, user_msg, profile, today_totals, protocolo, llm_model)
+            resposta_llm = _gerar_resposta_llm(
+                intent, user_msg, profile, today_totals, protocolo, llm_model,
+                meals_today, water_detected_ml, workout_logged_today,
+            )
             if resposta_llm is not None:
                 return resposta_llm
 
@@ -432,6 +445,9 @@ def _gerar_resposta_llm(
     today_totals: dict | None,
     protocolo: dict | None,
     llm_model: str,
+    meals_today: list[dict] | None = None,
+    water_detected_ml: float | None = None,
+    workout_logged_today: bool = False,
 ) -> AgentReply | None:
     from app.services import llm
     from app.services.classifier import looks_like_meal
@@ -443,16 +459,20 @@ def _gerar_resposta_llm(
         detected_meal = estimate_macros(user_msg)
 
     context: dict = {"intent": intent}
+    if water_detected_ml is not None:
+        context["agua_detectada_nesta_mensagem_ml"] = water_detected_ml
     if intent in ("ED_NUTRI", "MIXED"):
         totals = today_totals or {"kcal": 0, "P": 0, "F": 0, "C": 0, "agua_ml": 0}
         context["nutricao"] = {
             "hoje": totals,
             "meta": {k: profile[k] for k in ("meta_kcal", "meta_p", "meta_f", "meta_c", "meta_agua_ml")},
-            "refeicao_detectada": detected_meal,
+            "refeicoes_ja_registradas_hoje": meals_today or [],
+            "refeicao_detectada_nesta_mensagem": detected_meal,
         }
     if intent in ("TED_PERSONAL", "MIXED"):
         context["treino_hoje"] = _treino_hoje(protocolo)
         context["dia_da_semana"] = DIAS_PT[date.today().weekday()]
+        context["treino_de_hoje_ja_registrado_como_concluido"] = workout_logged_today
 
     text = llm.generate_reply_via_llm(agent, user_msg, context, llm_model)
     if text is None:

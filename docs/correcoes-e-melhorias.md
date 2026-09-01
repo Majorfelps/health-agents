@@ -189,6 +189,42 @@ mudança de prioridade sugerida em relação ao que já estava no `README.md`:
     parser), usava markdown (`**`, `#`, `---`) que aparecia literal na UI
     (texto puro, sem parser de markdown), e a falta de uma forma de
     validar um modelo antes de salvá-lo como o modelo em uso.
+- [x] **Água e treino mencionados no chat não eram persistidos** ✅
+  corrigido (2026-09-01) — reportado pelo usuário ("a memória das
+  refeições, água e exercícios não está sendo guardada"). Investigando:
+  refeições já eram persistidas (`meals`, desde sempre), mas água e
+  treino mencionados no chat nunca viravam registro nenhum — só existiam
+  via os forms separados (`POST /checkins`, `POST /workouts`), que o chat
+  nunca aciona. E mesmo refeições: o LLM só recebia totais agregados
+  (kcal/P/F/C), nunca a lista do que foi comido.
+  - `classifier.looks_like_water(text)` — detecta "bebi/tomei Xml/X
+    litros de água" (200ml padrão sem quantidade explícita), exclui
+    perguntas/metas. `classifier.looks_like_completed_workout(text)` —
+    detecta treino já concluído ("treinei", "fiz o treino", "malhei"),
+    exclui perguntas ("qual treino hoje?") e intenção futura ("vou
+    treinar").
+  - `chat.py` agora persiste `Checkin(type="water")` e
+    `ExerciseLog(completed=True)` quando detectados (mesmo padrão de
+    `payload.persist` que já valia pra `Meal`) — o treino usa
+    `resolve_treino_do_dia()` pra pegar nome/exercícios reais do plano do
+    usuário, não inventa nada.
+  - Contexto passado ao LLM (`agents._gerar_resposta_llm`) enriquecido
+    com `refeicoes_ja_registradas_hoje` (lista, não só totais), `agua_
+    detectada_nesta_mensagem_ml` e `treino_de_hoje_ja_registrado_como_
+    concluido` — assim ele responde pro momento real, não só pros
+    números agregados.
+  - `ChatOut` ganhou `detected_water_ml`/`detected_workout` (mesmo padrão
+    de `detected_meal`), pro frontend/testes confirmarem o que foi
+    persistido.
+  - Sem migração nova — só reusa colunas que já existiam em `Checkin`/
+    `ExerciseLog`.
+  - 19 testes novos (detectores, repository, endpoint HTTP de ponta a
+    ponta, contexto do LLM). Validado ao vivo: "bebi 500ml de água" →
+    `agua_ml` bate em `/meals/today` E o LLM referencia os 500ml na
+    resposta; "treinei hoje" → `ExerciseLog` criado com o treino real do
+    dia E uma pergunta seguinte ("qual treino de hoje?") já vem com "já
+    registrado como concluído"; pergunta "o que eu já comi hoje?" → LLM
+    lista as refeições específicas do dia, não só o total.
 - [ ] Exportar PDF de relatório semanal.
 - [ ] Bot Telegram/WhatsApp opcional reusando a API atual.
 

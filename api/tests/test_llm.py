@@ -156,6 +156,41 @@ def test_gerar_resposta_usa_texto_do_llm_mas_macros_continuam_deterministicos(mo
     assert reply.detected_meal["C"] == 69
 
 
+def test_gerar_resposta_llm_recebe_memoria_do_dia_no_contexto(monkeypatch):
+    """Regressão: refeições já registradas hoje, água detectada nesta
+    mensagem e status do treino do dia têm que chegar no contexto passado
+    pro LLM — sem isso ele só via totais agregados, sem saber o que
+    realmente já tinha acontecido."""
+    captured = {}
+
+    def _fake_generate(agent, user_msg, context, model):
+        captured["context"] = context
+        return "ok"
+
+    monkeypatch.setattr(llm, "is_enabled", lambda *a, **k: True)
+    monkeypatch.setattr(llm, "generate_reply_via_llm", _fake_generate)
+
+    agents.gerar_resposta(
+        intent="MIXED",
+        user_msg="bebi 300ml de água e já treinei",
+        profile=agents.DEFAULT_USER_PROFILE,
+        today_totals={"kcal": 500, "P": 30, "F": 10, "C": 60, "agua_ml": 0},
+        protocolo=None,
+        llm_enabled=True,
+        llm_model="x/x",
+        meals_today=[{"descricao": "arroz com frango", "kcal": 497, "P": 41, "F": 5, "C": 69}],
+        water_detected_ml=300.0,
+        workout_logged_today=False,
+    )
+
+    ctx = captured["context"]
+    assert ctx["agua_detectada_nesta_mensagem_ml"] == 300.0
+    assert ctx["nutricao"]["refeicoes_ja_registradas_hoje"] == [
+        {"descricao": "arroz com frango", "kcal": 497, "P": 41, "F": 5, "C": 69}
+    ]
+    assert ctx["treino_de_hoje_ja_registrado_como_concluido"] is False
+
+
 def test_gerar_resposta_safety_alert_nunca_chama_llm(monkeypatch):
     monkeypatch.setattr(llm, "is_enabled", lambda *a, **k: True)
 

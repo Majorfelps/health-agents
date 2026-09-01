@@ -119,12 +119,28 @@ def list_recent_meals(db: Session, user_id: int, limit: int = 50) -> list[m.Meal
     ).order_by(m.Meal.logged_at.desc()).limit(limit).all()
 
 
+def list_meals_today(db: Session, user_id: int) -> list[m.Meal]:
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    return db.query(m.Meal).filter(
+        m.Meal.user_id == user_id,
+        m.Meal.logged_at >= today_start,
+    ).order_by(m.Meal.logged_at.asc()).all()
+
+
 # ── Workouts ────────────────────────────────────────────────────────────────
 
 def list_recent_workouts(db: Session, user_id: int, limit: int = 20) -> list[m.ExerciseLog]:
     return db.query(m.ExerciseLog).filter(
         m.ExerciseLog.user_id == user_id,
     ).order_by(m.ExerciseLog.logged_at.desc()).limit(limit).all()
+
+
+def has_workout_logged_today(db: Session, user_id: int) -> bool:
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    return db.query(m.ExerciseLog).filter(
+        m.ExerciseLog.user_id == user_id,
+        m.ExerciseLog.logged_at >= today_start,
+    ).first() is not None
 
 
 # ── Checkins ─────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 chat.py — POST /chat e GET /chat/history.
 """
 from __future__ import annotations
+from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -43,8 +44,23 @@ def chat(
         "meta_agua_ml": plan.meta_agua_ml if plan else 2500,
     }
 
-    # 3. Totais do dia (para a resposta do Nutri ser contextual)
+    # 3. Totais do dia + memória de hoje (refeições já registradas, água
+    #    detectada nesta mensagem, treino já concluído) — pra resposta (LLM
+    #    ou template) refletir o estado real, não só os totais agregados.
     today_totals = repo.today_totals(db, user.id)
+    meals_today = [
+        {
+            "descricao": meal.description,
+            "kcal": float(meal.calories or 0),
+            "P": float(meal.protein_g or 0),
+            "F": float(meal.fat_g or 0),
+            "C": float(meal.carbs_g or 0),
+        }
+        for meal in repo.list_meals_today(db, user.id)
+    ]
+    water_detected_ml = classifier.looks_like_water(payload.message)
+    workout_completed_now = classifier.looks_like_completed_workout(payload.message)
+    workout_logged_today = repo.has_workout_logged_today(db, user.id)
 
     # 4. Gerar resposta
     protocolo = user.plan_training.protocolo if user.plan_training else None
@@ -56,6 +72,9 @@ def chat(
         protocolo=protocolo,
         llm_enabled=llm_cfg.enabled,
         llm_model=llm_cfg.model,
+        meals_today=meals_today,
+        water_detected_ml=water_detected_ml,
+        workout_logged_today=workout_logged_today,
     )
 
     # 5. Se o agente detectou refeição, grava em meals
@@ -106,6 +125,26 @@ def chat(
             )
             db.add(meal)
 
+        # Se água detectada, cria Checkin (agua_ml do dashboard soma isso)
+        if water_detected_ml is not None:
+            db.add(m.Checkin(
+                user_id=user.id,
+                type="water",
+                water_liters=water_detected_ml / 1000,
+            ))
+
+        # Se treino concluído detectado, cria ExerciseLog com o treino do
+        # dia resolvido do plano do usuário
+        if workout_completed_now:
+            treino = agents.resolve_treino_do_dia(protocolo, date.today().weekday())
+            db.add(m.ExerciseLog(
+                user_id=user.id,
+                workout_type=treino["nome"],
+                exercises=treino.get("exercicios", []),
+                completed=True,
+                notes=payload.message,
+            ))
+
         db.commit()
 
     return s.ChatOut(
@@ -117,6 +156,8 @@ def chat(
         agent=reply.agent,
         reply=reply.text,
         detected_meal=reply.detected_meal,
+        detected_water_ml=water_detected_ml,
+        detected_workout=workout_completed_now,
         metadata=extra,
         message_id=message_id,
     )

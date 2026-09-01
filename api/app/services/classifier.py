@@ -262,3 +262,53 @@ def looks_like_meal(text: str) -> bool:
         return False
     food_re = "|".join(FOOD_PATTERNS)
     return bool(re.search(rf"\b({food_re}|comi|almocei|jantei|refeic|ingeri)\b", t))
+
+
+# ── Helpers para detecção de água bebida ──────────────────────────────────────
+
+_WATER_TERM = re.compile(r"\bagua\b")
+_WATER_VERB = re.compile(r"\b(bebi|tomei|ingeri)\b")
+_ML_AMOUNT = re.compile(r"(\d+(?:[.,]\d+)?)\s*ml\b")
+_L_AMOUNT = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:l|litro|litros)\b")
+
+
+def looks_like_water(text: str) -> float | None:
+    """Se a mensagem descreve água já bebida (não pergunta/meta/planejamento),
+    retorna a quantidade em ml — 200ml (1 copo) se nenhuma quantidade for
+    especificada. None se a mensagem não for sobre beber água."""
+    t = _norm(text)
+    if MEAL_NEGATIVE.search(t):
+        return None
+    if not (_WATER_TERM.search(t) and _WATER_VERB.search(t)):
+        return None
+    ml_match = _ML_AMOUNT.search(t)
+    if ml_match:
+        return float(ml_match.group(1).replace(",", "."))
+    l_match = _L_AMOUNT.search(t)
+    if l_match:
+        return float(l_match.group(1).replace(",", ".")) * 1000
+    return 200.0
+
+
+# ── Helpers para detecção de treino JÁ concluído ──────────────────────────────
+
+WORKOUT_FUTURE_OR_QUESTION = re.compile(
+    r"\b(vou treinar|vou malhar|pretendo treinar|qual treino|que treino|"
+    r"qual e o treino|qual o treino)\b",
+    re.I,
+)
+WORKOUT_COMPLETED_VERBS = re.compile(
+    r"\b(treinei|malhei)\b|"
+    r"\bfiz\b.{0,20}\btreino\b|"
+    r"\b(terminei|conclui|finalizei|completei|acabei)\b.{0,20}\btreino\b",
+    re.I,
+)
+
+
+def looks_like_completed_workout(text: str) -> bool:
+    """True se a mensagem descreve um treino JÁ concluído (não uma pergunta
+    sobre o treino do dia, nem uma intenção futura de treinar)."""
+    t = _norm(text)
+    if WORKOUT_FUTURE_OR_QUESTION.search(t):
+        return False
+    return bool(WORKOUT_COMPLETED_VERBS.search(t))

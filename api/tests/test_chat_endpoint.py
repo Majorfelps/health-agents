@@ -68,3 +68,51 @@ def test_safety_alert_nao_confunde_com_refeicao(client):
     body = r.json()
     assert body["intent"] == "SAFETY_ALERT"
     assert body["detected_meal"] is None
+
+
+def test_chat_agua_detectada_persiste_e_aparece_em_meals_today(client):
+    """Regressão: água mencionada no chat tem que virar Checkin de verdade,
+    não só aparecer na resposta e sumir."""
+    r = client.post("/api/v1/chat", json={"message": "bebi 500ml de água"})
+    assert r.status_code == 200
+    assert r.json()["detected_water_ml"] == 500.0
+
+    today = client.get("/api/v1/meals/today").json()
+    assert today["agua_ml"] == 500.0
+
+
+def test_chat_sem_mencao_de_agua_nao_persiste_nada(client):
+    r = client.post("/api/v1/chat", json={"message": "qual o treino de hoje?"})
+    assert r.json()["detected_water_ml"] is None
+
+    today = client.get("/api/v1/meals/today").json()
+    assert today["agua_ml"] == 0.0
+
+
+def test_chat_treino_concluido_persiste_exercise_log(client):
+    """Regressão: 'treinei hoje' tem que virar ExerciseLog de verdade — antes
+    disso, treino mencionado no chat nunca era salvo em lugar nenhum."""
+    r = client.post("/api/v1/chat", json={"message": "treinei hoje, foi pesado"})
+    assert r.status_code == 200
+    assert r.json()["detected_workout"] is True
+
+    workouts = client.get("/api/v1/workouts").json()
+    assert len(workouts) == 1
+    assert workouts[0]["completed"] is True
+
+
+def test_chat_pergunta_sobre_treino_nao_persiste_exercise_log(client):
+    r = client.post("/api/v1/chat", json={"message": "qual o treino de hoje?"})
+    assert r.json()["detected_workout"] is False
+
+    workouts = client.get("/api/v1/workouts").json()
+    assert workouts == []
+
+
+def test_chat_persist_false_nao_grava_agua_nem_treino(client):
+    client.post("/api/v1/chat", json={"message": "bebi 500ml de água", "persist": False})
+    client.post("/api/v1/chat", json={"message": "treinei hoje", "persist": False})
+
+    today = client.get("/api/v1/meals/today").json()
+    assert today["agua_ml"] == 0.0
+    assert client.get("/api/v1/workouts").json() == []

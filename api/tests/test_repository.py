@@ -78,6 +78,31 @@ def test_last_n_days_totals_tambem_nao_troca_carbo_com_gordura(db):
     assert week[hoje]["F"] == 5.0
 
 
+def test_list_meals_today_retorna_descricoes_de_hoje(db):
+    user = _make_user(db)
+    db.add(m.Meal(user_id=user.id, meal_type="almoco", description="arroz com frango",
+                   calories=497, protein_g=41, carbs_g=69, fat_g=5))
+    db.commit()
+
+    meals = repo.list_meals_today(db, user.id)
+
+    assert len(meals) == 1
+    assert meals[0].description == "arroz com frango"
+
+
+def test_has_workout_logged_today_falso_sem_registro(db):
+    user = _make_user(db)
+    assert repo.has_workout_logged_today(db, user.id) is False
+
+
+def test_has_workout_logged_today_true_apos_registro(db):
+    user = _make_user(db)
+    db.add(m.ExerciseLog(user_id=user.id, workout_type="LOWER A", exercises=[], completed=True))
+    db.commit()
+
+    assert repo.has_workout_logged_today(db, user.id) is True
+
+
 def test_seed_default_plans_e_idempotente(db):
     user = _make_user(db)
     repo.seed_default_plans(db, user)

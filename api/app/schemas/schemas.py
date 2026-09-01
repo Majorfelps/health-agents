@@ -137,6 +137,8 @@ class ChatOut(BaseModel):
     agent: str
     reply: str
     detected_meal: Optional[dict] = None
+    detected_water_ml: Optional[float] = None
+    detected_workout: bool = False
     metadata: Optional[dict] = None
     message_id: Optional[int] = None
 
