@@ -103,6 +103,8 @@ npm run dev
 | `GET`  | `/api/v1/plan/nutrition` / `PUT` | CRUD plano nutri |
 | `GET`  | `/api/v1/plan/training` / `PUT` | CRUD plano treino |
 | `POST` | `/api/v1/checkins` | Check-in (humor, fome, sono, água) |
+| `GET`  | `/api/v1/llm/status` | LLM habilitado? Qual modelo (sem expor a key) |
+| `GET`  | `/api/v1/llm/models?free_only=true` | Catálogo de modelos do OpenRouter (só gratuitos por padrão — ver "Integração com LLM" abaixo) |
 | `GET`  | `/health` | Healthcheck |
 
 ## Mapeamento com Hermes original
@@ -152,6 +154,25 @@ LLM_ENABLED=true
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_MODEL=anthropic/claude-haiku-4.5   # qualquer slug do openrouter.ai/models
 ```
+
+Pra descobrir o slug certo pra `OPENROUTER_MODEL` sem precisar abrir o site,
+`GET /api/v1/llm/models` lista o catálogo do OpenRouter — não precisa de
+`LLM_ENABLED` nem de `OPENROUTER_API_KEY` configurados, é o catálogo público
+deles:
+
+```bash
+# só os gratuitos (default) — bons pra testar sem gastar nada
+curl http://localhost:8088/api/v1/llm/models | jq
+
+# catálogo inteiro
+curl "http://localhost:8088/api/v1/llm/models?free_only=false" | jq
+```
+
+Modelos gratuitos (sufixo `:free`) têm limite de ~50 requisições/dia por
+conta OpenRouter (sobe pra 1000/dia comprando 10 créditos) — ótimo pra
+testar a integração, não pra uso diário sério. `GET /api/v1/llm/status`
+mostra se está habilitado e qual modelo está configurado agora (sem expor
+a API key).
 
 Com Docker, o `docker-compose.yml` já repassa essas variáveis do `.env` da
 raiz pro serviço `api`. O que muda com `LLM_ENABLED=true`:

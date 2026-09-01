@@ -3,8 +3,65 @@ test_llm.py — garante que o caminho do LLM é opt-in (desligado por padrão,
 sem tocar rede) e que qualquer falha do LLM cai pro determinístico sem
 quebrar o chat. Não faz nenhuma chamada de rede real.
 """
+import httpx
+
 from app.core.config import settings
 from app.services import agents, classifier, llm
+
+
+_FAKE_CATALOG = [
+    {
+        "id": "inclusionai/ling-3.0-flash-fin:free",
+        "name": "Ling 3.0 Flash Fin (free)",
+        "context_length": 262144,
+        "pricing": {"prompt": "0", "completion": "0"},
+    },
+    {
+        "id": "anthropic/claude-haiku-4.5",
+        "name": "Claude Haiku 4.5",
+        "context_length": 200000,
+        "pricing": {"prompt": "0.000001", "completion": "0.000005"},
+    },
+]
+
+
+def test_parse_models_free_only():
+    result = llm._parse_models(_FAKE_CATALOG, free_only=True)
+    assert len(result) == 1
+    assert result[0]["id"] == "inclusionai/ling-3.0-flash-fin:free"
+    assert result[0]["is_free"] is True
+
+
+def test_parse_models_todos():
+    result = llm._parse_models(_FAKE_CATALOG, free_only=False)
+    assert len(result) == 2
+    ids = {m["id"] for m in result}
+    assert ids == {"inclusionai/ling-3.0-flash-fin:free", "anthropic/claude-haiku-4.5"}
+    pago = next(m for m in result if m["id"] == "anthropic/claude-haiku-4.5")
+    assert pago["is_free"] is False
+
+
+def test_list_models_retorna_vazio_em_falha_de_rede(monkeypatch):
+    def _explode(*args, **kwargs):
+        raise httpx.ConnectError("sem rede")
+
+    monkeypatch.setattr(llm.httpx, "get", _explode)
+    assert llm.list_models() == []
+
+
+def test_endpoint_llm_status(client):
+    r = client.get("/api/v1/llm/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["enabled"] is False
+    assert body["model"] is None
+
+
+def test_endpoint_llm_models_usa_catalogo_mockado(monkeypatch, client):
+    monkeypatch.setattr(llm, "list_models", lambda free_only=False: [{"id": "fake/model:free"}])
+    r = client.get("/api/v1/llm/models?free_only=true")
+    assert r.status_code == 200
+    assert r.json() == {"models": [{"id": "fake/model:free"}]}
 
 
 def test_strip_markdown_fence_remove_cerca_json():

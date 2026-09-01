@@ -17,6 +17,7 @@ import json
 import logging
 from typing import Optional
 
+import httpx
 from openai import OpenAI
 
 from app.core.config import settings
@@ -28,6 +29,40 @@ _client: Optional[OpenAI] = None
 
 def is_enabled() -> bool:
     return bool(settings.llm_enabled and settings.openrouter_api_key and settings.openrouter_model)
+
+
+def _parse_models(data: list[dict], free_only: bool) -> list[dict]:
+    out = []
+    for m in data:
+        pricing = m.get("pricing", {})
+        is_free = m.get("id", "").endswith(":free") or (
+            str(pricing.get("prompt", "")) in ("0", "0.0")
+            and str(pricing.get("completion", "")) in ("0", "0.0")
+        )
+        if free_only and not is_free:
+            continue
+        out.append({
+            "id": m.get("id"),
+            "name": m.get("name"),
+            "context_length": m.get("context_length"),
+            "is_free": is_free,
+            "pricing": pricing,
+        })
+    return out
+
+
+def list_models(free_only: bool = False) -> list[dict]:
+    """Lista o catálogo público de modelos do OpenRouter (openrouter.ai/models).
+    Não precisa de LLM_ENABLED nem de OPENROUTER_API_KEY configurados — é o
+    catálogo público deles. Retorna [] em caso de qualquer falha de rede."""
+    try:
+        resp = httpx.get(f"{settings.openrouter_base_url}/models", timeout=10.0)
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+    except Exception:
+        logger.exception("list_models falhou")
+        return []
+    return _parse_models(data, free_only)
 
 
 def _get_client() -> Optional[OpenAI]:
