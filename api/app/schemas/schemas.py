@@ -159,3 +159,17 @@ class DashboardOut(BaseModel):
     last_7_days: dict  # {date: totals}
     workout_today: Optional[dict] = None  # do plano
     last_checkin: Optional[CheckinOut] = None
+
+
+# ── LLM config ──────────────────────────────────────────────────────────────
+
+class LLMConfigIn(BaseModel):
+    enabled: bool
+    model: str = ""  # slug do OpenRouter, ex: "anthropic/claude-haiku-4.5" — ver GET /llm/models
+
+
+class LLMConfigOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    enabled: bool
+    model: str
+    updated_at: datetime

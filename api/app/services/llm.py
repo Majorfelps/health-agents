@@ -2,6 +2,12 @@
 llm.py — cliente OpenRouter (API compatível com OpenAI) usado para gerar
 respostas em linguagem natural e, opcionalmente, classificar intenção.
 
+`enabled`/`model` são passados explicitamente por quem chama (vêm do banco,
+via repository.get_llm_config() — editável em runtime por
+PUT /api/v1/llm/config, sem restart do container). A API key e a base URL
+continuam só no .env (OPENROUTER_API_KEY/OPENROUTER_BASE_URL) — não são
+editáveis por API, por segurança.
+
 Regras de segurança/robustez:
 - Nunca é chamado para SAFETY_ALERT — isso é sempre resolvido por regra fixa
   em classifier.py, antes de qualquer chamada ao LLM.
@@ -27,8 +33,8 @@ logger = logging.getLogger(__name__)
 _client: Optional[OpenAI] = None
 
 
-def is_enabled() -> bool:
-    return bool(settings.llm_enabled and settings.openrouter_api_key and settings.openrouter_model)
+def is_enabled(enabled: bool, model: str) -> bool:
+    return bool(enabled and settings.openrouter_api_key and model)
 
 
 def _parse_models(data: list[dict], free_only: bool) -> list[dict]:
@@ -67,7 +73,7 @@ def list_models(free_only: bool = False) -> list[dict]:
 
 def _get_client() -> Optional[OpenAI]:
     global _client
-    if not is_enabled():
+    if not settings.openrouter_api_key:
         return None
     if _client is None:
         _client = OpenAI(base_url=settings.openrouter_base_url, api_key=settings.openrouter_api_key)
@@ -102,17 +108,17 @@ Dada a mensagem do usuário, responda APENAS um JSON válido (sem markdown, sem 
 Nunca use "SAFETY_ALERT" — mensagens de risco à saúde já são tratadas antes de chegar em você."""
 
 
-def classify_via_llm(text: str):
+def classify_via_llm(text: str, model: str):
     """Retorna um Classification (de app.services.classifier) ou None em
     caso de LLM desabilitado ou qualquer falha."""
     client = _get_client()
-    if client is None:
+    if client is None or not model:
         return None
     from app.services.classifier import Classification  # import tardio evita ciclo
 
     try:
         resp = client.chat.completions.create(
-            model=settings.openrouter_model,
+            model=model,
             max_tokens=200,
             temperature=0,
             messages=[
@@ -171,16 +177,16 @@ PERSONA_SYSTEM = {
 }
 
 
-def generate_reply_via_llm(agent: str, user_msg: str, context: dict) -> Optional[str]:
+def generate_reply_via_llm(agent: str, user_msg: str, context: dict, model: str) -> Optional[str]:
     """Retorna o texto da resposta ou None em caso de LLM desabilitado ou
     qualquer falha (quem chama cai pro template determinístico)."""
     client = _get_client()
-    if client is None:
+    if client is None or not model:
         return None
     system = PERSONA_SYSTEM.get(agent, PERSONA_SYSTEM["master"])
     try:
         resp = client.chat.completions.create(
-            model=settings.openrouter_model,
+            model=model,
             max_tokens=400,
             temperature=0.7,
             messages=[

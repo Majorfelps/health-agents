@@ -23,8 +23,9 @@ def chat(
     user = repo.get_or_create_user(db, payload.user_whatsapp)
     repo.seed_default_plans(db, user)
 
-    # 1. Classificar
-    cls = classifier.classify_smart(payload.message)
+    # 1. Classificar (LLM opcional, config vem do banco — editável via API)
+    llm_cfg = repo.get_llm_config(db)
+    cls = classifier.classify_smart(payload.message, llm_enabled=llm_cfg.enabled, llm_model=llm_cfg.model)
 
     # 2. Carregar perfil (do user + plan_nutrition)
     plan = user.plan_nutrition
@@ -53,6 +54,8 @@ def chat(
         profile=profile,
         today_totals=today_totals,
         protocolo=protocolo,
+        llm_enabled=llm_cfg.enabled,
+        llm_model=llm_cfg.model,
     )
 
     # 5. Se o agente detectou refeição, grava em meals

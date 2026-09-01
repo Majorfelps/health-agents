@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import models as m
 from app.services.agents import PLANO_SEMANAL_PADRAO
 
@@ -140,3 +141,27 @@ def recent_messages(db: Session, user_id: int, limit: int = 100) -> list[m.Agent
     return db.query(m.AgentMessage).filter(
         m.AgentMessage.user_id == user_id,
     ).order_by(m.AgentMessage.created_at.desc()).limit(limit).all()
+
+
+# ── LLM config (singleton) ──────────────────────────────────────────────────
+
+def get_llm_config(db: Session) -> m.LLMConfig:
+    """Config atual do LLM (enabled/model), lida do banco — editável em
+    runtime via PUT /api/v1/llm/config, sem restart. Cria a linha na 1ª
+    chamada, semeada com os valores de LLM_ENABLED/OPENROUTER_MODEL do .env."""
+    cfg = db.query(m.LLMConfig).first()
+    if cfg is None:
+        cfg = m.LLMConfig(enabled=settings.llm_enabled, model=settings.openrouter_model)
+        db.add(cfg)
+        db.commit()
+        db.refresh(cfg)
+    return cfg
+
+
+def update_llm_config(db: Session, enabled: bool, model: str) -> m.LLMConfig:
+    cfg = get_llm_config(db)
+    cfg.enabled = enabled
+    cfg.model = model
+    db.commit()
+    db.refresh(cfg)
+    return cfg

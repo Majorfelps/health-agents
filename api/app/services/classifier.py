@@ -211,9 +211,12 @@ def classify(text: str) -> Classification:
     )
 
 
-def classify_smart(text: str) -> Classification:
+def classify_smart(text: str, llm_enabled: bool = False, llm_model: str = "") -> Classification:
     """Ponto de entrada usado pelo endpoint de chat: igual a classify(), mas
     delega a classificação (exceto SAFETY_ALERT) pro LLM quando habilitado.
+
+    `llm_enabled`/`llm_model` vêm da config do LLM lida do banco (ver
+    repository.get_llm_config() — editável via API, sem restart).
 
     O check de SAFETY_ALERT roda aqui, sempre, por regra fixa — nunca chega
     a chamar o LLM nesse caso. Se o LLM estiver desabilitado, ou a chamada
@@ -232,8 +235,8 @@ def classify_smart(text: str) -> Classification:
         )
 
     from app.services import llm
-    if llm.is_enabled():
-        result = llm.classify_via_llm(text)
+    if llm.is_enabled(llm_enabled, llm_model):
+        result = llm.classify_via_llm(text, llm_model)
         if result is not None:
             return result
 

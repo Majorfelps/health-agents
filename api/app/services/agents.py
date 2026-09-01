@@ -397,6 +397,8 @@ def gerar_resposta(
     profile: dict | None = None,
     today_totals: dict | None = None,
     protocolo: dict | None = None,
+    llm_enabled: bool = False,
+    llm_model: str = "",
 ) -> AgentReply:
     """Despacho principal: dada uma intenção, retorna a resposta do agente certo.
 
@@ -404,7 +406,9 @@ def gerar_resposta(
     do treino), usado para resolver o treino de hoje nas intents que falam
     de treino (TED_PERSONAL / MIXED).
 
-    Se LLM_ENABLED, tenta gerar o *texto* da resposta via LLM (nunca pra
+    `llm_enabled`/`llm_model` vêm da config do LLM lida do banco (ver
+    repository.get_llm_config() — editável via API, sem restart). Se
+    habilitado, tenta gerar o *texto* da resposta via LLM (nunca pra
     SAFETY_ALERT) — mas `detected_meal` e o treino do dia continuam sempre
     calculados por regra fixa (estimate_macros / resolve_treino_do_dia), pra
     nunca persistir um número que o LLM inventou. Qualquer falha do LLM cai
@@ -413,8 +417,8 @@ def gerar_resposta(
 
     if intent != "SAFETY_ALERT":
         from app.services import llm
-        if llm.is_enabled():
-            resposta_llm = _gerar_resposta_llm(intent, user_msg, profile, today_totals, protocolo)
+        if llm.is_enabled(llm_enabled, llm_model):
+            resposta_llm = _gerar_resposta_llm(intent, user_msg, profile, today_totals, protocolo, llm_model)
             if resposta_llm is not None:
                 return resposta_llm
 
@@ -427,6 +431,7 @@ def _gerar_resposta_llm(
     profile: dict,
     today_totals: dict | None,
     protocolo: dict | None,
+    llm_model: str,
 ) -> AgentReply | None:
     from app.services import llm
     from app.services.classifier import looks_like_meal
@@ -449,7 +454,7 @@ def _gerar_resposta_llm(
         context["treino_hoje"] = _treino_hoje(protocolo)
         context["dia_da_semana"] = DIAS_PT[date.today().weekday()]
 
-    text = llm.generate_reply_via_llm(agent, user_msg, context)
+    text = llm.generate_reply_via_llm(agent, user_msg, context, llm_model)
     if text is None:
         return None
     return AgentReply(text=text, agent=agent, intent=intent, detected_meal=detected_meal)

@@ -150,20 +150,32 @@ mudança de prioridade sugerida em relação ao que já estava no `README.md`:
   `553199674109` (Michael) via default de query param.
 - [ ] Multi-tenant (múltiplos usuários reais).
 - [x] **Integração opcional com LLM** ✅ concluída (2026-09-01) — via
-  OpenRouter (`LLM_ENABLED`/`OPENROUTER_API_KEY`/`OPENROUTER_MODEL` no
-  `.env`, ver README § "Integração com LLM"). `api/app/services/llm.py`
-  gera o texto das respostas e (opcional, mesma flag) a classificação de
-  intenção — `SAFETY_ALERT` continua sempre por regra fixa em
-  `classifier.py`, nunca chega a chamar o LLM, e macros persistidas
-  continuam vindas de `estimate_macros()`, nunca do LLM. Qualquer falha
-  (rede, timeout, JSON malformado) cai pro caminho determinístico —
-  coberto por 10 testes em `api/tests/test_llm.py` com mocks (sem chamada
-  de rede real nos testes/CI). Validado ao vivo com chave real do
-  OpenRouter (`anthropic/claude-haiku-4.5`) nos 5 caminhos (greeting,
-  refeição, treino, misto, safety) — inclusive um bug real achado e
-  corrigido nesse processo: o modelo envolvia o JSON da classificação em
-  ` ```json ``` ` (quebrava o parser) e usava markdown (`**`, `#`, `---`)
-  que aparecia literal na UI (texto puro, sem parser de markdown).
+  OpenRouter. `api/app/services/llm.py` gera o texto das respostas e
+  (mesmo toggle) a classificação de intenção — `SAFETY_ALERT` continua
+  sempre por regra fixa em `classifier.py`, nunca chega a chamar o LLM, e
+  macros persistidas continuam vindas de `estimate_macros()`, nunca do
+  LLM. Qualquer falha (rede, timeout, JSON malformado, rate limit) cai pro
+  caminho determinístico.
+  - **Troca de modelo/toggle pela própria aplicação** (não só `.env`):
+    config (`enabled`/`model`) fica numa tabela `llm_config` (singleton),
+    editável via `GET`/`PUT /api/v1/llm/config` e pela tela **IA**
+    (`/settings`) no web — vale no próximo chat, sem restart do
+    container. `.env` (`LLM_ENABLED`/`OPENROUTER_MODEL`) só semeia o
+    valor inicial na 1ª criação da linha; `OPENROUTER_API_KEY` continua
+    só no `.env` (não editável por API, por segurança).
+  - `GET /api/v1/llm/models?free_only=true` lista o catálogo do
+    OpenRouter (público, não precisa de config) — filtra só os gratuitos
+    por padrão, bons pra testar. Confirmado ao vivo: modelos `:free` têm
+    rate limit de ~50 req/dia por conta.
+  - 19 testes em `api/tests/test_llm.py` (mocks — sem chamada de rede
+    real no CI), cobrindo fallback, endpoints e a persistência da config.
+  - Validado ao vivo com chave real do OpenRouter: os 5 caminhos de
+    intenção, troca de modelo via `curl` e via UI (browser) sem restart,
+    volta ao determinístico quando o modelo escolhido bate rate limit.
+    Dois bugs achados e corrigidos no processo: o modelo envolvia o JSON
+    da classificação em ` ```json ``` ` (quebrava o parser) e usava
+    markdown (`**`, `#`, `---`) que aparecia literal na UI (texto puro,
+    sem parser de markdown).
 - [ ] Exportar PDF de relatório semanal.
 - [ ] Bot Telegram/WhatsApp opcional reusando a API atual.
 

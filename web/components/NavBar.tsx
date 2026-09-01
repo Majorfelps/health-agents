@@ -7,6 +7,7 @@ const NAV = [
   { href: "/chat", label: "Chat", icon: "💬" },
   { href: "/plan", label: "Planos", icon: "📋" },
   { href: "/checkins", label: "Check-ins", icon: "✅" },
+  { href: "/settings", label: "IA", icon: "🤖" },
 ];
 
 export default function NavBar() {

@@ -103,6 +103,7 @@ npm run dev
 | `GET`  | `/api/v1/plan/nutrition` / `PUT` | CRUD plano nutri |
 | `GET`  | `/api/v1/plan/training` / `PUT` | CRUD plano treino |
 | `POST` | `/api/v1/checkins` | Check-in (humor, fome, sono, água) |
+| `GET`  | `/api/v1/llm/config` / `PUT` | Liga/desliga o LLM e troca o modelo — vale no próximo chat, sem restart |
 | `GET`  | `/api/v1/llm/status` | LLM habilitado? Qual modelo (sem expor a key) |
 | `GET`  | `/api/v1/llm/models?free_only=true` | Catálogo de modelos do OpenRouter (só gratuitos por padrão — ver "Integração com LLM" abaixo) |
 | `GET`  | `/health` | Healthcheck |
@@ -146,36 +147,41 @@ npm run dev
 
 Por padrão o chat é 100% determinístico e offline (como descrito acima). Pra
 ligar respostas geradas por LLM via [OpenRouter](https://openrouter.ai/models)
-(API compatível com OpenAI, qualquer modelo do catálogo deles), defina no
-`.env`:
+(API compatível com OpenAI, qualquer modelo do catálogo deles):
 
-```bash
-LLM_ENABLED=true
-OPENROUTER_API_KEY=sk-or-v1-...
-OPENROUTER_MODEL=anthropic/claude-haiku-4.5   # qualquer slug do openrouter.ai/models
-```
+1. Defina a chave no `.env` (só isso é env-only, por segurança — não dá pra
+   trocar por API):
+   ```bash
+   OPENROUTER_API_KEY=sk-or-v1-...
+   ```
+   Com Docker, o `docker-compose.yml` já repassa essa variável do `.env` da
+   raiz pro serviço `api`.
+2. **Liga o LLM e escolhe o modelo pela própria aplicação** — tela **IA**
+   (`/settings`) no web, ou direto na API:
+   ```bash
+   # lista modelos gratuitos do OpenRouter (bons pra testar sem gastar —
+   # ~50 req/dia por conta, sobe pra 1000/dia comprando 10 créditos)
+   curl http://localhost:8088/api/v1/llm/models | jq
 
-Pra descobrir o slug certo pra `OPENROUTER_MODEL` sem precisar abrir o site,
-`GET /api/v1/llm/models` lista o catálogo do OpenRouter — não precisa de
-`LLM_ENABLED` nem de `OPENROUTER_API_KEY` configurados, é o catálogo público
-deles:
+   # catálogo inteiro
+   curl "http://localhost:8088/api/v1/llm/models?free_only=false" | jq
 
-```bash
-# só os gratuitos (default) — bons pra testar sem gastar nada
-curl http://localhost:8088/api/v1/llm/models | jq
+   # liga e escolhe o modelo — vale no próximo chat, sem reiniciar nada
+   curl -X PUT http://localhost:8088/api/v1/llm/config \
+     -H "Content-Type: application/json" \
+     -d '{"enabled": true, "model": "anthropic/claude-haiku-4.5"}'
 
-# catálogo inteiro
-curl "http://localhost:8088/api/v1/llm/models?free_only=false" | jq
-```
+   # confere a config atual (sem expor a API key)
+   curl http://localhost:8088/api/v1/llm/config
+   ```
 
-Modelos gratuitos (sufixo `:free`) têm limite de ~50 requisições/dia por
-conta OpenRouter (sobe pra 1000/dia comprando 10 créditos) — ótimo pra
-testar a integração, não pra uso diário sério. `GET /api/v1/llm/status`
-mostra se está habilitado e qual modelo está configurado agora (sem expor
-a API key).
+Essa config (`enabled`/`model`) fica no banco (tabela `llm_config`, uma
+linha só), não em variável de ambiente — trocar de modelo ou desligar o LLM
+é imediato, não precisa editar `.env` nem dar restart no container.
+`LLM_ENABLED`/`OPENROUTER_MODEL` no `.env` só definem o valor inicial (1ª
+vez que o app sobe com o banco vazio); depois disso quem manda é o banco.
 
-Com Docker, o `docker-compose.yml` já repassa essas variáveis do `.env` da
-raiz pro serviço `api`. O que muda com `LLM_ENABLED=true`:
+O que muda com o LLM habilitado:
 
 - **Texto da resposta** (Nutri/Personal/Master) passa a ser gerado pelo LLM,
   na voz de cada persona, com os dados reais (totais do dia, metas, treino de
