@@ -1,7 +1,7 @@
 "use client";
 import useSWR from "swr";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8088";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8088";
 
 const fetcher = (url: string) => fetch(API_BASE + url).then((r) => {
   if (!r.ok) throw new Error(`HTTP ${r.status}`);

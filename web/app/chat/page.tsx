@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import NavBar from "@/components/NavBar";
 import { ChatResponse, ChatMessage, AGENT_LABEL, INTENT_LABEL } from "@/lib/types";
-import { postJson } from "@/lib/api";
+import { postJson, API_BASE } from "@/lib/api";
 import clsx from "clsx";
 
 const SUGESTOES = [
@@ -24,7 +24,7 @@ export default function ChatPage() {
 
   // Carrega histórico
   useEffect(() => {
-    fetch("/api/v1/chat/history?limit=50")
+    fetch(`${API_BASE}/api/v1/chat/history?limit=50`)
       .then((r) => r.json())
       .then((msgs) => setMessages(msgs || []))
       .catch(() => setMessages([]));

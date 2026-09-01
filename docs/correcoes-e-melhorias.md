@@ -11,22 +11,27 @@ Baseado na auditoria de 2026-09-01 (stack testado via `docker compose up --build
   `last_n_days_totals()` (linhas 104-110, usada como referência).
   Confirmado ao vivo: refeição real com F5/C69 apareceu no dashboard como F69/C5.
 
-## Etapa 2 — Consistência dev local / Docker
+## Etapa 2 — Consistência dev local / Docker ✅ concluída (2026-09-01)
 
-- [ ] **Corrigir `NEXT_PUBLIC_API_URL` no build Docker do `web`**
-  Hoje a env var não chega ao `npm run build` (só é setada em runtime pelo
-  `docker-compose.yml`, mas `NEXT_PUBLIC_*` do Next.js é congelada no bundle
-  em build-time). Passar como `ARG`/`ENV` no `web/Dockerfile` antes do
-  `RUN npm run build`, e como `build.args` no `docker-compose.yml`.
-- [ ] **Remover ou consertar o rewrite morto em `next.config.js`**
-  O proxy `/api/v1/:path*` → `NEXT_PUBLIC_API_URL` nunca é de fato usado
-  (o front chama `API_BASE` direto do browser em `web/lib/api.ts`) e está
-  quebrado em Docker (`ECONNREFUSED` para `localhost:8000` nos logs do
-  container `web`). Decidir: ou apagar o rewrite, ou passar a usá-lo de
-  verdade (chamadas relativas `/api/v1/...` em vez de `API_BASE + url`).
-- [ ] **Criar `web/.env.example`** (ou `web/.env.local` documentado) com
-  `NEXT_PUBLIC_API_URL=http://localhost:8000`, para que `npm run dev` local
-  (fora do Docker) encontre a API sem precisar do fallback hardcoded.
+- [x] **Corrigir `NEXT_PUBLIC_API_URL` no build Docker do `web`**
+  Adicionado `ARG`/`ENV NEXT_PUBLIC_API_URL` no `web/Dockerfile` (stage
+  `builder`, antes do `RUN npm run build`) e `build.args` no
+  `docker-compose.yml` apontando para `http://localhost:8088` (porta
+  exposta no host — é o que o *browser* precisa enxergar, não o hostname
+  interno `api`). Confirmado via `grep` no `.next/server/app/*.js` do
+  container que o valor foi de fato embutido no bundle.
+- [x] **Remover o rewrite morto em `next.config.js`**
+  Removido — o front nunca usava o proxy relativo (`api.ts` sempre chamou
+  `API_BASE + url`, URL absoluta). Ao remover, um `fetch()` solto em
+  `web/app/chat/page.tsx` (histórico do chat) que *dependia* desse rewrite
+  quebrou (500) — corrigido trocando para `${API_BASE}/api/v1/chat/history`,
+  mesmo padrão usado no resto do app. `API_BASE` agora é exportado de
+  `web/lib/api.ts`.
+- [x] **Criar `web/.env.example`** com `NEXT_PUBLIC_API_URL=http://localhost:8000`
+  para dev local sem Docker (a API sobe em 8000 nesse fluxo, não 8088).
+- Validado ao vivo: rebuild completo (`docker compose up --build`),
+  navegação em `/`, `/chat`, `/plan`, `/checkins` — todas as chamadas de API
+  batendo em `localhost:8088`, sem 500/CORS/console errors.
 
 ## Etapa 3 — Infraestrutura de banco de dados
 
