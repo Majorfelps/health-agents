@@ -4,8 +4,6 @@ Aplicação web full-stack com **dashboard + chat estilo WhatsApp** para os
 agentes de saúde **ED o Nutri** (nutrição) e **ED o Personal / TED** (treino),
 mais o **Master Agent** que roteia entre eles.
 
-Portado dos skills/scripts do [Hermes Agent](https://github.com/...) do Michael
-(Eckomining), originalmente enviados por WhatsApp via Evolution API.
 
 ## Stack
 
