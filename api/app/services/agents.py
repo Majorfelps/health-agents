@@ -1,0 +1,380 @@
+"""
+agents.py — Personas ED o Nutri, ED o Personal e Master Agent (orquestrador).
+
+Portado de:
+  - skills/health/nutri-agent/SKILL.md
+  - skills/health/personal-trainer/SKILL.md
+  - skills/health/master-agent/SKILL.md
+  - scripts/master_agent.py (respostas + classificação interna)
+
+Substitui as chamadas ao LLM por templates determinísticos (o chat web
+inicia como "demo" — os templates garantem experiência completa sem API key).
+A interface é a mesma, então trocar para LLM depois é trivial.
+"""
+from __future__ import annotations
+import re
+import unicodedata
+from dataclasses import dataclass
+from datetime import date, datetime
+from typing import Optional
+
+
+# ── Perfil do usuário (espelha USER_PROFILE do master_agent) ─────────────────
+
+DEFAULT_USER_PROFILE = {
+    "name": "Michael",
+    "age": 33,
+    "sex": "M",
+    "weight_kg": 93.0,
+    "height_cm": 180,
+    "activity": "sedentário",
+    "goal": "recomposição corporal (perder ~8kg de gordura + ganhar massa magra)",
+    "tdee": 2274,
+    "meta_kcal": 1770,
+    "meta_p": 186,  # 2g/kg
+    "meta_f": 70,
+    "meta_c": 165,
+    "meta_agua_ml": 2500,
+}
+
+
+# ── Plano semanal ED o Personal (espelha PLANO_SEMANAL do master_agent) ──────
+
+PLANO_SEMANAL = {
+    0: {  # segunda
+        "nome": "UPPER A",
+        "foco": "peito + costas",
+        "series": 18,
+        "exercicios": [
+            ("Supino reto barra", "3×8–10", "RPE 6–7", "90–120s"),
+            ("Remada curvada", "3×8–10", "RPE 6–7", "90–120s"),
+            ("Supino inclinado halter", "2×10–12", "RPE 7", "75–90s"),
+            ("Puxada frontal", "3×10–12", "RPE 7", "75–90s"),
+            ("Desenvolvimento militar", "2×10–12", "RPE 7", "75–90s"),
+            ("Abdominal supra", "3×15", "RPE 7", "60s"),
+        ],
+    },
+    1: {  # terça
+        "nome": "LOWER A",
+        "foco": "quadríceps + posterior",
+        "series": 18,
+        "exercicios": [
+            ("Agachamento livre", "3×8–10", "RPE 6–7", "90–120s"),
+            ("Leg press 45°", "3×10–12", "RPE 7", "90s"),
+            ("Cadeira extensora", "2×12", "RPE 7", "60s"),
+            ("Stiff", "3×8–10", "RPE 7", "90s"),
+            ("Cadeira flexora", "2×12", "RPE 7", "60s"),
+            ("Panturrilha em pé", "3×15", "RPE 7", "60s"),
+        ],
+    },
+    2: {  # quarta
+        "nome": "CARDIO HIIT 20min",
+        "foco": "cardio alta intensidade",
+        "exercicios": [
+            ("Aquecimento esteira", "5min", "Zona 1", "—"),
+            ("Sprint 30s + caminhada 90s", "8 rounds", "Zona 4", "—"),
+            ("Desaquecimento", "3min", "Zona 1", "—"),
+        ],
+    },
+    3: {  # quinta
+        "nome": "UPPER B",
+        "foco": "ombros + braços",
+        "exercicios": [
+            ("Desenvolvimento halter", "3×10", "RPE 7", "90s"),
+            ("Barra fixa assistida", "3×max", "RPE 7", "90s"),
+            ("Crucifixo inclinado", "3×12", "RPE 7", "75s"),
+            ("Rosca direta", "3×10", "RPE 7", "75s"),
+            ("Tríceps corda", "3×12", "RPE 7", "75s"),
+            ("Elevação lateral", "3×15", "RPE 7", "60s"),
+        ],
+    },
+    4: {  # sexta
+        "nome": "LOWER B",
+        "foco": "posterior + glúteo",
+        "exercicios": [
+            ("Terra romeno", "3×8–10", "RPE 7", "90s"),
+            ("Agachamento sumô", "3×10", "RPE 7", "90s"),
+            ("Cadeira flexora", "3×12", "RPE 7", "75s"),
+            ("Agachamento búlgaro", "3×10", "RPE 7", "90s"),
+            ("Hiperextensão", "3×12", "RPE 7", "60s"),
+            ("Prancha", "3×45s", "RPE 7", "45s"),
+        ],
+    },
+    5: {  # sábado
+        "nome": "CARDIO LISS 35min",
+        "foco": "cardio zona 2",
+        "exercicios": [
+            ("Esteira / caminhada 6–7km/h", "35min", "Zona 2", "—"),
+        ],
+    },
+    6: {  # domingo
+        "nome": "DESCANSO ATIVO",
+        "foco": "recuperação",
+        "exercicios": [
+            ("Caminhada leve", "30min", "—", "—"),
+            ("Alongamento global", "15min", "—", "—"),
+        ],
+    },
+}
+
+DIAS_PT = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+
+
+# ── Estimativa de macros (espelha FOOD_TABLE + estimate_meal_heuristic) ─────
+
+FOOD_TABLE = [
+    ("arroz", 128, 2.7, 0.3, 28),
+    ("feijao", 76, 4.5, 0.5, 13),
+    ("frango", 165, 31, 3.6, 0),
+    ("carne moida", 250, 26, 15, 0),
+    ("pao", 300, 9, 1, 58),
+    ("ovo", 70, 6, 5, 0.5),
+    ("banana", 105, 1.3, 0.4, 27),
+    ("whey", 120, 24, 2, 3),
+    ("mandioca", 125, 1.2, 0.2, 30),
+    ("salada", 15, 0.8, 0.1, 3),
+    ("tomate", 18, 0.9, 0.2, 4),
+    ("macarrao", 158, 5.8, 0.9, 31),
+    ("batata", 87, 1.9, 0.1, 20),
+    ("peixe", 130, 26, 3, 0),
+    ("queijo", 350, 25, 28, 1),
+    ("leite", 60, 3.3, 3.3, 4.8),
+    ("iogurte", 60, 5, 3, 4),
+    ("tapioca", 240, 1, 0.5, 60),
+    ("aveia", 389, 17, 7, 66),
+]
+
+
+def _norm(s: str) -> str:
+    return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode().lower()
+
+
+def estimate_macros(text: str) -> Optional[dict]:
+    """Estimativa determinística de macros de uma refeição (espelha
+    master_agent.estimate_meal_heuristic). Retorna dict ou None."""
+    t = _norm(text)
+    total = {"kcal": 0.0, "P": 0.0, "F": 0.0, "C": 0.0}
+    found = []
+    for name, kcal, P, F, C in FOOD_TABLE:
+        if re.search(rf"\b{re.escape(name)}", t):
+            gm = re.search(rf"(\d+)\s*g\s*(?:de\s*)?{re.escape(name)}", t)
+            un = re.search(rf"(\d+)\s*(?:unid\.?|ovos?|bananas?)?\s*{re.escape(name)}", t)
+            mult = 1.0
+            if gm:
+                mult = int(gm.group(1)) / 100.0
+            elif name in ("ovo", "banana") and un:
+                mult = float(un.group(1))
+            elif name == "pao":
+                mult = 0.5
+            total["kcal"] += kcal * mult
+            total["P"] += P * mult
+            total["F"] += F * mult
+            total["C"] += C * mult
+            found.append(name)
+    if not found:
+        return None
+    return {
+        "descricao": text[:50],
+        "kcal": round(total["kcal"]),
+        "P": round(total["P"]),
+        "F": round(total["F"]),
+        "C": round(total["C"]),
+    }
+
+
+# ── Geradores de resposta ────────────────────────────────────────────────────
+
+@dataclass
+class AgentReply:
+    text: str
+    agent: str
+    intent: str
+    detected_meal: Optional[dict] = None
+    metadata: Optional[dict] = None
+
+
+def _profile_brief(profile: dict) -> str:
+    return (
+        f"{profile.get('name', 'usuário')}: {profile.get('age', '?')}a, "
+        f"{profile.get('weight_kg', '?')}kg, {profile.get('height_cm', '?')}cm, "
+        f"meta {profile.get('meta_kcal', '?')} kcal/dia "
+        f"(P {profile.get('meta_p', '?')}g | F {profile.get('meta_f', '?')}g | "
+        f"C {profile.get('meta_c', '?')}g), "
+        f"água {profile.get('meta_agua_ml', '?')}ml."
+    )
+
+
+def reply_greeting(profile: dict) -> AgentReply:
+    return AgentReply(
+        text=(
+            "🤖 *Master Agent* — olá! Sou o orquestrador da sua equipe de saúde.\n\n"
+            "Posso te conectar com:\n"
+            "🥗 *ED o Nutri* — alimentação, dieta, macros, kcal\n"
+            "💪 *ED o Personal* — treino, exercícios, cardio, carga\n\n"
+            "Me diz: o que você precisa hoje? 🔥"
+        ),
+        agent="master",
+        intent="ORCHESTRATOR",
+    )
+
+
+def reply_unknown(profile: dict, user_msg: str) -> AgentReply:
+    return AgentReply(
+        text=(
+            "🤖 *Master Agent* — não entendi direito, pode ser mais específico? 🤔\n\n"
+            "Exemplos do que eu sei responder:\n"
+            "🥗 \"comi 100g de arroz com feijão\"\n"
+            "💪 \"qual o treino de hoje?\"\n"
+            "📊 \"quanto falta pra meta de proteína?\"\n"
+            "🫗 \"bebi 500ml de água\""
+        ),
+        agent="master",
+        intent="ORCHESTRATOR",
+    )
+
+
+def reply_safety(profile: dict) -> AgentReply:
+    return AgentReply(
+        text=(
+            "⚠️ *Master Agent* — identifiquei um sinal de risco na sua mensagem.\n\n"
+            "Se você está passando mal AGORA, procure atendimento:\n"
+            "• SAMU: 192\n"
+            "• CVV (crise emocional): 188 ou chat cvv.org.br\n\n"
+            "Para dúvidas de saúde rotineiras, me conta o que está sentindo que eu oriento com base no seu plano. "
+            "Não substituo médico."
+        ),
+        agent="master",
+        intent="SAFETY_ALERT",
+    )
+
+
+def reply_mixed(profile: dict, user_msg: str) -> AgentReply:
+    return AgentReply(
+        text=(
+            "🤖 *Master Agent* — entendi que envolve nutrição + treino, vou te dar a visão integrada.\n\n"
+            f"💪 Treino: {_treino_hoje_resumo()}\n"
+            f"🥗 Dieta: {_dieta_resumo(profile)}\n\n"
+            "Quer que eu detalhe um dos lados? (foco treino / foco nutrição)"
+        ),
+        agent="master",
+        intent="MIXED",
+    )
+
+
+def reply_nutri(profile: dict, user_msg: str, today_totals: dict | None = None) -> AgentReply:
+    """Resposta do ED o Nutri. Se a mensagem descrever refeição consumida,
+    inclui linha REGISTRO: <desc> | P P F F C C kcal K."""
+    totals = today_totals or {"kcal": 0, "P": 0, "F": 0, "C": 0, "agua_ml": 0}
+    meta = profile
+    faltam_kcal = max(0, meta["meta_kcal"] - totals["kcal"])
+    faltam_p = max(0, meta["meta_p"] - totals["P"])
+    faltam_f = max(0, meta["meta_f"] - totals["F"])
+    faltam_c = max(0, meta["meta_c"] - totals["C"])
+    faltam_agua = max(0, meta["meta_agua_ml"] - totals["agua_ml"])
+
+    # Detecta se é refeição
+    from .classifier import looks_like_meal
+    is_meal = looks_like_meal(user_msg)
+    est = None
+    registro_line = ""
+    if is_meal:
+        est = estimate_macros(user_msg)
+        if est:
+            registro_line = (
+                f"\n\nREGISTRO: {est['descricao']} | "
+                f"P{est['P']} F{est['F']} C{est['C']} kcal{est['kcal']}"
+            )
+
+    body = (
+        f"🥗 *ED o Nutri* — anotado!\n\n"
+        f"📊 *Hoje:* {totals['kcal']} kcal | P {totals['P']}g | "
+        f"F {totals['F']}g | C {totals['C']}g | 💧 {totals['agua_ml']}ml\n"
+        f"🎯 *Meta:* {meta['meta_kcal']} kcal | P {meta['meta_p']}g | "
+        f"F {meta['meta_f']}g | C {meta['meta_c']}g | 💧 {meta['meta_agua_ml']}ml\n"
+        f"📉 *Faltam:* {faltam_kcal} kcal | P {faltam_p}g | "
+        f"F {faltam_f}g | C {faltam_c}g | 💧 {faltam_agua}ml"
+    )
+    if is_meal and est:
+        body += (
+            f"\n\n🍽 *Refeição estimada:* {est['descricao']}\n"
+            f"   {est['kcal']} kcal | P {est['P']}g | F {est['F']}g | C {est['C']}g"
+        )
+
+    return AgentReply(
+        text=body + registro_line,
+        agent="nutri",
+        intent="ED_NUTRI",
+        detected_meal=est,
+    )
+
+
+def reply_personal(profile: dict, user_msg: str) -> AgentReply:
+    """Resposta do ED o Personal. Por padrão mostra o treino do dia."""
+    hoje = _treino_hoje()
+    if hoje["nome"] == "DESCANSO ATIVO":
+        body = (
+            f"💪 *ED o Personal* — hoje é *{DIAS_PT[date.today().weekday()]}*, dia de descanso ativo 🧘\n\n"
+            f"🎯 Sugestão:\n"
+            f"   • Caminhada leve 30min\n"
+            f"   • Alongamento global 15min\n\n"
+            f"Recuperação também é treino. Descanse bem!"
+        )
+    else:
+        linhas = [
+            f"💪 *ED o Personal* — *{DIAS_PT[date.today().weekday()]} → {hoje['nome']}* "
+            f"({hoje['foco']}, {hoje.get('series', '?')} séries)\n"
+        ]
+        for i, (ex, reps, rpe, desc) in enumerate(hoje["exercicios"], 1):
+            linhas.append(f"  {i}. {ex} — {reps} @ {rpe} (desc {desc})")
+        body = "\n".join(linhas) + (
+            "\n\nBora! 🔥 Marca o ✅ quando terminar e me passa o RPE médio (1–10)."
+        )
+    return AgentReply(text=body, agent="personal", intent="TED_PERSONAL")
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+def _treino_hoje() -> dict:
+    """Retorna o treino de hoje (espelha a PLANO_SEMANAL)."""
+    return PLANO_SEMANAL[date.today().weekday()]
+
+
+def _treino_hoje_resumo() -> str:
+    h = _treino_hoje()
+    return f"{DIAS_PT[date.today().weekday()]} = {h['nome']} ({h['foco']})"
+
+
+def _dieta_resumo(profile: dict) -> str:
+    return (
+        f"meta {profile['meta_kcal']} kcal/dia, "
+        f"P {profile['meta_p']}g | F {profile['meta_f']}g | C {profile['meta_c']}g, "
+        f"5 refeições + 1 ceia opcional"
+    )
+
+
+def gerar_resposta(
+    intent: str,
+    user_msg: str,
+    profile: dict | None = None,
+    today_totals: dict | None = None,
+) -> AgentReply:
+    """Despacho principal: dada uma intenção, retorna a resposta do agente certo."""
+    profile = profile or DEFAULT_USER_PROFILE
+    if intent == "SAFETY_ALERT":
+        return reply_safety(profile)
+    if intent == "ORCHESTRATOR":
+        # Greeting vs unknown
+        norm = _norm(user_msg)
+        tokens = set(re.findall(r"\b\w+\b", norm))
+        greeting_terms = {"oi", "ola", "olá", "eae", "opa", "hi", "hey", "hello",
+                          "bom", "dia", "tarde", "noite", "boa"}
+        if tokens <= greeting_terms or (len(tokens) <= 3 and any(g in norm for g in greeting_terms)):
+            return reply_greeting(profile)
+        return reply_unknown(profile, user_msg)
+    if intent == "ED_NUTRI":
+        return reply_nutri(profile, user_msg, today_totals)
+    if intent == "TED_PERSONAL":
+        return reply_personal(profile, user_msg)
+    if intent == "MIXED":
+        return reply_mixed(profile, user_msg)
+    return reply_unknown(profile, user_msg)

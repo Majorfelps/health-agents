@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #__next { height: 100%; }
+body { background: #ECE5DD; }
+
+/* WhatsApp-like chat bubbles */
+.bubble {
+  max-width: 75%;
+  padding: 8px 10px 6px;
+  border-radius: 8px;
+  box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13);
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  font-size: 14.5px;
+  line-height: 1.4;
+}
+.bubble-in { background: #FFFFFF; align-self: flex-start; }
+.bubble-out { background: #DCF8C6; align-self: flex-end; }
+.bubble .agent-tag { font-size: 11px; font-weight: 600; color: #075E54; margin-bottom: 2px; }
+.bubble .intent-tag { font-size: 10px; color: #888; margin-top: 4px; }

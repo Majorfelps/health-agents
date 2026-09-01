@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: health
+      POSTGRES_PASSWORD: health
+      POSTGRES_DB: health_agents
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ../db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U health -d health_agents"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://health:health@db:5432/health_agents
+      CORS_ORIGINS: '["http://localhost:3000","http://web:3000"]'
+      DEBUG: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:

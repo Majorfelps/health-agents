@@ -1,0 +1,45 @@
+# Dependências
+**/node_modules/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Builds
+**/.next/
+**/dist/
+**/build/
+**/.venv/
+**/venv/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+**/*.log
+logs/
+
+# DB local (NÃO inclui o schema.sql que é versionado)
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+docker-data/
+
+# Testes / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Dados pessoais — NUNCA commitar
+data/
+backups/
+**/tmp/
