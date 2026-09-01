@@ -22,7 +22,7 @@ export default function CheckinsPage() {
               {data.last_checkin.hunger_level != null && <div>🍽 Fome: {data.last_checkin.hunger_level}/10</div>}
               {data.last_checkin.sleep_hours != null && <div>😴 Sono: {data.last_checkin.sleep_hours}h</div>}
               {data.last_checkin.water_liters != null && <div>💧 Água: {data.last_checkin.water_liters}L</div>}
-              {data.last_checkin.notes && <div className="pt-2 italic text-gray-600">"{data.last_checkin.notes}"</div>}
+              {data.last_checkin.notes && <div className="pt-2 italic text-gray-600">&quot;{data.last_checkin.notes}&quot;</div>}
             </div>
           </section>
         )}

@@ -87,7 +87,7 @@ export default function ChatPage() {
           {messages.length === 0 && (
             <div className="text-center text-gray-500 my-8">
               <div className="text-3xl mb-2">👋</div>
-              <div className="text-sm">Comece dizendo "oi" ou clique em uma sugestão abaixo.</div>
+              <div className="text-sm">Comece dizendo &quot;oi&quot; ou clique em uma sugestão abaixo.</div>
             </div>
           )}
           {messages.map((m, i) => {
