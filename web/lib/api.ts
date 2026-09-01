@@ -1,7 +1,9 @@
 "use client";
 import useSWR from "swr";
 
-const fetcher = (url: string) => fetch(url).then((r) => {
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8088";
+
+const fetcher = (url: string) => fetch(API_BASE + url).then((r) => {
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 });
@@ -11,7 +13,7 @@ export function useApi<T>(url: string, refreshInterval = 0) {
 }
 
 export async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const r = await fetch(url, {
+  const r = await fetch(API_BASE + url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -24,7 +26,7 @@ export async function postJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 export async function putJson<T>(url: string, body: unknown): Promise<T> {
-  const r = await fetch(url, {
+  const r = await fetch(API_BASE + url, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
