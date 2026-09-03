@@ -21,13 +21,23 @@ export default function ChatPage() {
   const [busy, setBusy] = useState(false);
   const [lastMeta, setLastMeta] = useState<ChatResponse | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
 
-  // Carrega histórico
+  // Carrega histórico, e recarrega periodicamente pra pegar mensagens que
+  // chegaram pelo WhatsApp nesse meio tempo (webhook, ver POST /whatsapp/webhook).
+  // Pula o poll enquanto uma msg tá sendo enviada, pra não interromper a UI otimista.
   useEffect(() => {
-    fetch(`${API_BASE}/api/v1/chat/history?limit=50`)
-      .then((r) => r.json())
-      .then((msgs) => setMessages(msgs || []))
-      .catch(() => setMessages([]));
+    function loadHistory() {
+      if (busyRef.current) return;
+      fetch(`${API_BASE}/api/v1/chat/history?limit=50`)
+        .then((r) => r.json())
+        .then((msgs) => setMessages(msgs || []))
+        .catch(() => {});
+    }
+    loadHistory();
+    const interval = setInterval(loadHistory, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -44,6 +54,7 @@ export default function ChatPage() {
       agent: "user",
       direction: "inbound",
       message: content,
+      source: "web",
       created_at: new Date().toISOString(),
     };
     setMessages((m) => [...m, tempUser]);
@@ -59,6 +70,7 @@ export default function ChatPage() {
         message: r.reply,
         intent: r.intent,
         images: r.images,
+        source: "web",
         created_at: new Date().toISOString(),
       };
       setMessages((m) => [...m, replyMsg]);
@@ -92,11 +104,22 @@ export default function ChatPage() {
             </div>
           )}
           {messages.map((m, i) => {
-            const isUser = m.agent === "user";
+            const isUser = m.direction === "inbound";
             const agent = AGENT_LABEL[m.agent] || { label: m.agent, emoji: "•" };
+            const fromWhatsApp = m.source === "whatsapp";
             return (
               <div key={i} className={clsx("bubble flex flex-col", isUser ? "bubble-out" : "bubble-in")}>
-                {!isUser && <div className="agent-tag">{agent.emoji} {agent.label}</div>}
+                {!isUser && (
+                  <div className="agent-tag flex items-center gap-1">
+                    {agent.emoji} {agent.label}
+                    {fromWhatsApp && (
+                      <span className="text-[10px] font-normal opacity-70">📱 via WhatsApp</span>
+                    )}
+                  </div>
+                )}
+                {isUser && fromWhatsApp && (
+                  <div className="text-[10px] opacity-70 mb-0.5">📱 via WhatsApp</div>
+                )}
                 <div>{m.message}</div>
                 {m.images && m.images.length > 0 && (
                   <div className="mt-2 flex flex-col gap-2">

@@ -180,6 +180,25 @@ def _norm(s: str) -> str:
     return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode().lower()
 
 
+def infer_meal_type(text: str) -> str:
+    """Heurística simples pra categorizar refeição a partir do texto —
+    usada tanto pelo chat web quanto pela ingestão de mensagens do
+    WhatsApp (ver api/v1/whatsapp.py), pra manter a mesma regra nos dois
+    canais."""
+    t = _norm(text)
+    if "cafe" in t:
+        return "cafe"
+    if "almo" in t:
+        return "almoco"
+    if "janta" in t or "jantar" in t:
+        return "janta"
+    if "lanche" in t:
+        return "lanche"
+    if "ceia" in t:
+        return "ceia"
+    return "outro"
+
+
 def estimate_macros(text: str) -> Optional[dict]:
     """Estimativa determinística de macros de uma refeição (espelha
     master_agent.estimate_meal_heuristic). Retorna dict ou None."""

@@ -160,11 +160,17 @@ class AgentMessage(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    agent: Mapped[str] = mapped_column(String(50))  # master | nutri | personal
+    agent: Mapped[str] = mapped_column(String(50))  # master | nutri | personal | whatsapp
     direction: Mapped[str] = mapped_column(String(20))  # inbound | outbound
     message: Mapped[str] = mapped_column(Text)
     intent: Mapped[str | None] = mapped_column(String(50))
     extra: Mapped[dict] = mapped_column(JSON, default=dict)  # classification, detecção de refeição
+    source: Mapped[str] = mapped_column(String(20), default="web")  # web | whatsapp
+    # ID da mensagem na Evolution API — só preenchido pra mensagens que
+    # passaram pelo WhatsApp (enviadas por nós OU recebidas via webhook).
+    # Único: garante que o webhook nunca duplica uma mensagem já registrada
+    # (idempotência em cima de retry/ecoar da própria Evolution API).
+    evolution_message_id: Mapped[str | None] = mapped_column(String(100), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
 
     __table_args__ = (

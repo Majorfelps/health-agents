@@ -78,6 +78,7 @@ export interface ChatMessage {
   message: string;
   intent?: string;
   images?: ExerciseImage[];
+  source?: "web" | "whatsapp";
   created_at?: string;
 }
 
@@ -133,6 +134,7 @@ export const AGENT_LABEL: Record<string, { label: string; emoji: string }> = {
   master: { label: "Master Agent", emoji: "🤖" },
   nutri: { label: "ED o Nutri", emoji: "🥗" },
   personal: { label: "ED o Personal", emoji: "💪" },
+  whatsapp: { label: "WhatsApp", emoji: "📱" },
 };
 
 export const INTENT_LABEL: Record<Intent, string> = {

@@ -18,6 +18,7 @@ Body: {"number": "<DDI+DDD+numero>@s.whatsapp.net", "text": "..."}
 """
 from __future__ import annotations
 import logging
+from typing import Optional
 
 import httpx
 
@@ -35,35 +36,57 @@ def is_enabled(enabled: bool, target_number: str) -> bool:
     )
 
 
-def _jid(number: str) -> str:
+def to_jid(number: str) -> str:
     """Normaliza o número pro formato que a Evolution API espera. Aceita
     tanto '553199674109' quanto '553199674109@s.whatsapp.net'."""
     number = number.strip()
     return number if number.endswith("@s.whatsapp.net") else f"{number}@s.whatsapp.net"
 
 
-def send_message(target_number: str, text: str) -> bool:
-    """Envia texto pro WhatsApp via Evolution API. True se enviou (HTTP
-    2xx), False em qualquer falha — nunca levanta exceção."""
+def extract_text(message_obj: dict) -> Optional[str]:
+    """Extrai o texto de um objeto `message` da Evolution API (mesmo shape
+    em findMessages e no webhook). Cobre os formatos mais comuns de texto;
+    mídia sem legenda (imagem, áudio, figurinha...) retorna None — quem
+    chama decide se ignora esses casos."""
+    if not message_obj:
+        return None
+    if message_obj.get("conversation"):
+        return message_obj["conversation"]
+    ext = message_obj.get("extendedTextMessage")
+    if ext and ext.get("text"):
+        return ext["text"]
+    for media_key in ("imageMessage", "videoMessage", "documentMessage"):
+        media = message_obj.get(media_key)
+        if media and media.get("caption"):
+            return media["caption"]
+    return None
+
+
+def send_message(target_number: str, text: str) -> Optional[str]:
+    """Envia texto pro WhatsApp via Evolution API. Retorna o ID da
+    mensagem na Evolution (`key.id`) se enviou, None em qualquer falha —
+    nunca levanta exceção. O ID é usado pra deduplicar quando o webhook
+    ecoar essa mesma mensagem de volta (ver whatsapp.py router,
+    POST /webhook)."""
     if not settings.evolution_api_key or not settings.evolution_instance:
         logger.warning("send_message chamado sem EVOLUTION_API_KEY/INSTANCE configurados no .env")
-        return False
+        return None
     if not target_number:
-        return False
+        return None
 
     url = f"{settings.evolution_api_url}/message/sendText/{settings.evolution_instance}"
     try:
         resp = httpx.post(
             url,
-            json={"number": _jid(target_number), "text": text},
+            json={"number": to_jid(target_number), "text": text},
             headers={"apikey": settings.evolution_api_key, "Content-Type": "application/json"},
             timeout=15.0,
         )
         resp.raise_for_status()
-        return True
+        return (resp.json().get("key") or {}).get("id")
     except Exception:
         logger.exception("whatsapp.send_message falhou — resposta do chat web segue normal")
-        return False
+        return None
 
 
 def test_connection() -> dict:

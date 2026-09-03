@@ -86,6 +86,8 @@ def chat(
         "reasoning": cls.reasoning,
     }
 
+    whatsapp_sent = False
+
     if payload.persist:
         # inbound
         in_msg = m.AgentMessage(
@@ -118,7 +120,7 @@ def chat(
         if reply.detected_meal:
             meal = m.Meal(
                 user_id=user.id,
-                meal_type=_infer_meal_type(payload.message),
+                meal_type=agents.infer_meal_type(payload.message),
                 description=reply.detected_meal["descricao"],
                 calories=reply.detected_meal["kcal"],
                 protein_g=reply.detected_meal["P"],
@@ -148,15 +150,20 @@ def chat(
                 notes=payload.message,
             ))
 
-        db.commit()
+        # Espelha a resposta pro WhatsApp (opcional, best-effort — nunca
+        # quebra a resposta do chat web se falhar). Config vem do banco,
+        # editável via GET/PUT /api/v1/whatsapp/config, sem restart. O ID
+        # da mensagem na Evolution fica gravado no out_msg — é assim que
+        # o webhook (POST /whatsapp/webhook) reconhece essa mensagem
+        # quando ela "ecoa" de volta e evita duplicá-la.
+        whatsapp_cfg = repo.get_whatsapp_config(db)
+        if whatsapp_service.is_enabled(whatsapp_cfg.enabled, whatsapp_cfg.target_number):
+            evo_id = whatsapp_service.send_message(whatsapp_cfg.target_number, reply.text)
+            whatsapp_sent = evo_id is not None
+            if evo_id:
+                out_msg.evolution_message_id = evo_id
 
-    # 6. Espelha a resposta pro WhatsApp (opcional, best-effort — nunca
-    #    quebra a resposta do chat web se falhar). Config vem do banco,
-    #    editável via GET/PUT /api/v1/whatsapp/config, sem restart.
-    whatsapp_cfg = repo.get_whatsapp_config(db)
-    whatsapp_sent = False
-    if payload.persist and whatsapp_service.is_enabled(whatsapp_cfg.enabled, whatsapp_cfg.target_number):
-        whatsapp_sent = whatsapp_service.send_message(whatsapp_cfg.target_number, reply.text)
+        db.commit()
 
     return s.ChatOut(
         user_message=payload.message,
@@ -176,22 +183,6 @@ def chat(
     )
 
 
-def _infer_meal_type(text: str) -> str:
-    """Heurística simples para categorizar refeição (espelha o que master_agent faz
-    quando há contexto suficiente — aqui é fallback quando não há contexto prévio)."""
-    import unicodedata
-    t = unicodedata.normalize("NFD", text.lower()).encode("ascii", "ignore").decode()
-    if "cafe" in t or "café" in t:
-        return "cafe"
-    if "almo" in t:
-        return "almoco"
-    if "janta" in t or "jantar" in t:
-        return "janta"
-    if "lanche" in t:
-        return "lanche"
-    if "ceia" in t:
-        return "ceia"
-    return "outro"
 
 
 @router.get("/history")
@@ -212,6 +203,7 @@ def history(
             "message": m.message,
             "intent": m.intent,
             "images": (m.extra or {}).get("images", []),
+            "source": m.source,
             "created_at": m.created_at.isoformat(),
         }
         for m in msgs

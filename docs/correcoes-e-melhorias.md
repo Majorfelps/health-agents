@@ -339,6 +339,68 @@ mudança de prioridade sugerida em relação ao que já estava no `README.md`:
     UI — **envio de mensagem real não foi testado nesta sessão**,
     `WHATSAPP_ENABLED` ficou `false` por padrão até o usuário confirmar
     explicitamente que quer testar um envio de verdade.
+  - **Teste de envio real (mesmo dia)** — usuário pediu explicitamente
+    pra ligar de verdade e validar. Habilitado, mandei uma mensagem real
+    → chegou no WhatsApp (`DELIVERY_ACK` confirmado via
+    `chat/findMessages`). Investigação extra por causa de um sinal
+    (heartbeat do listener do Hermes mudando logo em seguida): esperei um
+    ciclo de polling e confirmei que o listener antigo **ignorou
+    corretamente** a mensagem espelhada (`fromMe: true`, já tinha essa
+    proteção) — nenhuma resposta duplicada/loop. Também ficou claro que a
+    conversa está em uso real e concorrente (mensagens genuínas do
+    usuário chegando durante o teste).
+  - **Extensão pra via de volta (mesmo dia)** — usuário reportou:
+    "mensagens recebidas pelo whatsapp não estão refletindo na aplicação
+    web". Decisões confirmadas com o usuário: mecanismo = webhook (tempo
+    real); mostrar a conversa completa (dos dois lados, não só o que o
+    usuário manda); mensagens do WhatsApp também contam nos totais/
+    dashboard (unificar com o chat web).
+    - `AgentMessage` ganhou `source` (`web`/`whatsapp`) e
+      `evolution_message_id` (único, migração com backfill pra não
+      quebrar linhas já existentes) — usado pra deduplicar quando o
+      webhook ecoa uma mensagem que o próprio health-agents mandou.
+      `whatsapp.send_message()` passou a retornar o ID da mensagem
+      (`Optional[str]`) em vez de `bool`.
+    - `POST /api/v1/whatsapp/webhook`: recebe `messages.upsert` da
+      Evolution API. Mensagem do usuário (`fromMe=false`) → roda a mesma
+      detecção de refeição/água/treino do chat web (regra fixa, sem LLM —
+      não há resposta sendo gerada aqui) e persiste, unificando os
+      totais; mensagem de quem já responde nesse WhatsApp (`fromMe=true`,
+      ID desconhecido) → só reflete no histórico, sem side-effect;
+      mensagem que o próprio app mandou (`fromMe=true`, ID já conhecido)
+      → ignorada. **Nunca gera nem envia resposta própria** — só reflete.
+    - **Achado real de infra durante o setup**: a Evolution API tinha
+      `WEBHOOK_GLOBAL_ENABLED=false` no próprio container — o webhook por
+      instância ficava configurado (confirmado via `/webhook/find`) mas
+      nunca disparava. Precisou mudar essa env var e **reiniciar o
+      container da Evolution API** (`/home/michael/projetos/evolution/`,
+      projeto docker-compose separado, fora deste repo) — ação de risco
+      real (container compartilhado, ativamente em uso), só feita depois
+      de confirmação explícita do usuário. Sessão do WhatsApp sobreviveu
+      ao restart sem pedir novo QR code, porque fica persistida no
+      Postgres (`DATABASE_PROVIDER=postgresql`), não num volume local.
+    - Bug real achado e corrigido no processo: o frontend decidia bolha
+      de usuário vs. agente por `agent === "user"`, mas o histórico
+      persistido nunca grava `agent="user"` pra mensagens inbound (grava
+      o agente que respondeu) — depois de um reload, mensagens do próprio
+      usuário apareciam com o rótulo do agente errado. Corrigido pra usar
+      `direction === "inbound"` (sempre correto, no histórico e no
+      otimista local).
+    - Web: `/chat` passou a recarregar o histórico a cada 10s (pausado
+      enquanto uma mensagem tá sendo enviada) pra refletir mensagens que
+      chegam pelo WhatsApp quase em tempo real; selo "📱 via WhatsApp" nas
+      bolhas com `source=whatsapp`.
+    - 13 testes novos pro webhook (dedup, filtro de conversa, detecção
+      unificada, idempotência em retry, lista de mensagens em lote) — 33
+      no total em `test_whatsapp.py`.
+    - **Validado ao vivo, ponta a ponta, com tráfego real**: depois do
+      restart da Evolution, uma mensagem enviada pelo chat web chegou no
+      WhatsApp sem duplicar quando ecoada de volta; e — durante o próprio
+      teste — mensagens reais do usuário chegando pelo WhatsApp
+      ("comi um pao com manteiga", "me mande o treino de hoje") foram
+      refletidas automaticamente no chat web com o selo correto, e a
+      refeição detectada apareceu nos totais do dashboard. Confirmado
+      visualmente no browser.
 
 ---
 

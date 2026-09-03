@@ -120,6 +120,7 @@ npm run dev
 | `GET`  | `/api/v1/whatsapp/config` / `PUT` | Liga/desliga o espelhamento pro WhatsApp e troca o número — vale no próximo chat, sem restart |
 | `POST` | `/api/v1/whatsapp/test` | Confirma que a instância da Evolution API está acessível/conectada (não envia mensagem) |
 | `GET`  | `/api/v1/whatsapp/status` | Espelhamento habilitado? Pra qual número (sem expor a key) |
+| `POST` | `/api/v1/whatsapp/webhook` | Recebe eventos da Evolution API — reflete a conversa no chat web nos dois sentidos (configurado fora desta app, ver "Integração com WhatsApp") |
 | `GET`  | `/health` | Healthcheck |
 
 ## Mapeamento com Hermes original
@@ -251,19 +252,29 @@ tem busca por nome funcional (só filtro por match exato), então
 Exercício fora do mapeamento simplesmente não manda imagem — cai pro texto
 normal, sem quebrar nada. Pra adicionar mais, ver o docstring do arquivo.
 
-## Espelhamento pro WhatsApp (opcional)
+## Integração com WhatsApp (opcional)
 
-Por padrão as respostas do chat ficam só no web. Pra também chegarem no
-WhatsApp via [Evolution API](https://github.com/EvolutionAPI/evolution-api)
-(**mesma instância que o bot antigo do Hermes usa** — ver observação
-importante abaixo):
+Por padrão o chat fica só no web. Com a integração ligada, via
+[Evolution API](https://github.com/EvolutionAPI/evolution-api), a conversa
+fica espelhada **nos dois sentidos**:
 
-1. Defina as credenciais no `.env` (infra, só `.env`, igual
-   `OPENROUTER_API_KEY`):
+- **Web → WhatsApp**: a resposta do agente (só o texto, nunca a mensagem
+  que você digitou — você já a viu no web) é enviada de verdade pro
+  WhatsApp depois de gerada.
+- **WhatsApp → web**: mensagens que chegam/saem nessa conversa no WhatsApp
+  (via webhook `messages.upsert` da Evolution API) aparecem no histórico
+  do chat web, com um selo "📱 via WhatsApp". Mensagens **do usuário**
+  passam pela mesma detecção de refeição/água/treino do chat web (mesmas
+  regras fixas) e **unificam os totais** — comer algo pelo WhatsApp conta
+  no dashboard igual comer pelo web.
+
+### Configuração
+
+1. Credenciais no `.env` (infra, só `.env`, igual `OPENROUTER_API_KEY`):
    ```bash
    EVOLUTION_API_URL=http://host.docker.internal:8080  # ou o host onde a Evolution roda
    EVOLUTION_API_KEY=...
-   EVOLUTION_INSTANCE=...   # nome da instância conectada (confira com /instance/fetchInstances)
+   EVOLUTION_INSTANCE=...   # nome da instância conectada (confira com GET /instance/fetchInstances)
    ```
    Com Docker, `docker-compose.yml` já repassa essas variáveis e resolve
    `host.docker.internal` (Linux, Docker Engine ≥20.10) — útil quando a
@@ -280,25 +291,41 @@ importante abaixo):
      -H "Content-Type: application/json" \
      -d '{"enabled": true, "target_number": "553199674109"}'
    ```
+   Config (`enabled`/`target_number`) fica no banco (`whatsapp_config`),
+   como no LLM — `WHATSAPP_ENABLED`/`WHATSAPP_TARGET_NUMBER` no `.env` só
+   semeiam o valor inicial.
+3. **Registra o webhook na Evolution API** (fora desta aplicação — é
+   config da instância, não algo que o health-agents expõe na UI, já que
+   depende de rede/infra de cada ambiente):
+   ```bash
+   curl -X POST "$EVOLUTION_API_URL/webhook/set/$EVOLUTION_INSTANCE" \
+     -H "apikey: $EVOLUTION_API_KEY" -H "Content-Type: application/json" \
+     -d '{"webhook": {"enabled": true, "url": "<URL DESTE APP alcançável PELA Evolution>/api/v1/whatsapp/webhook", "events": ["MESSAGES_UPSERT"]}}'
+   ```
+   A URL precisa ser alcançável *a partir do container da Evolution API*,
+   não do seu navegador — se ela rodar num Docker separado deste projeto,
+   `host.docker.internal` não necessariamente resolve nesse sentido; o que
+   funcionou aqui foi o IP do gateway da rede Docker da Evolution (ex.:
+   `docker network inspect <rede-da-evolution>` → campo `Gateway`).
+   **⚠️ Se a Evolution tiver `WEBHOOK_GLOBAL_ENABLED=false`** (variável do
+   próprio container dela), o webhook por instância fica configurado mas
+   nunca dispara — precisa virar `true` nas envs dela e reiniciar aquele
+   container pra valer (a sessão do WhatsApp sobrevive ao restart *desde
+   que* ela esteja persistida em banco, não só num volume local — confira
+   `DATABASE_PROVIDER` nas envs da Evolution antes de reiniciar).
 
-Essa config (`enabled`/`target_number`) fica no banco (tabela
-`whatsapp_config`), como no LLM — `WHATSAPP_ENABLED`/`WHATSAPP_TARGET_NUMBER`
-no `.env` só semeiam o valor inicial.
+### Coexistindo com outro bot no mesmo número
 
-**O que é enviado:** só a resposta do agente (texto), depois que ela é
-gerada — nunca a mensagem que você digitou no web (você já a viu lá).
-Qualquer falha de envio (rede, instância desconectada, credenciais erradas)
-é capturada e nunca quebra a resposta do chat web — ver
-`api/app/services/whatsapp.py`.
-
-**⚠️ Se você já usa um bot de WhatsApp separado no mesmo número** (como o
-`master_agent_listener` do Hermes, que responde mensagens recebidas de
-verdade): esse espelhamento é **só de saída** (web → WhatsApp) — o
-health-agents não lê nem responde mensagens que chegam no WhatsApp, então
-não some com o outro bot nem cria loop de resposta automática. Mas os dois
-sistemas continuam sendo cérebros **independentes** (estados separados,
-classificação separada) — se você responder no WhatsApp uma mensagem que
-o health-agents mandou, quem processa é o outro bot, não este projeto.
+Se você já usa um bot de WhatsApp separado no mesmo número (como o
+`master_agent_listener` do Hermes, que também responde mensagens reais):
+o health-agents **nunca gera nem envia resposta própria** pras mensagens
+que chegam via webhook — só reflete a conversa (dos dois lados) no
+histórico web. Quem continua respondendo de verdade no WhatsApp é o outro
+sistema; o health-agents só "assiste" e mantém os totais em dia. Isso evita
+duas vozes diferentes respondendo a mesma mensagem. Mensagens que o
+**próprio health-agents** manda (passo "Web → WhatsApp" acima) são
+reconhecidas pelo ID da Evolution (`evolution_message_id`) e nunca
+duplicadas quando o webhook ecoa elas de volta.
 
 ## Próximos passos (roadmap)
 
