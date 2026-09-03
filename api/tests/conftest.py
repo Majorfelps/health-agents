@@ -31,7 +31,7 @@ Base.metadata.create_all(bind=engine)
 
 _TABLES = [
     "agent_messages", "meals", "exercise_logs", "checkins",
-    "plan_training", "plan_nutrition", "llm_config", "users",
+    "plan_training", "plan_nutrition", "llm_config", "whatsapp_config", "users",
 ]
 
 

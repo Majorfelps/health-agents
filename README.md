@@ -22,15 +22,17 @@ Portado dos skills/scripts do [Hermes Agent](https://github.com/...) do Michael
 health-agents/
 ├── api/
 │   ├── app/
-│   │   ├── api/v1/          # routers: chat, meals, workouts, plans, checkins, dashboard, llm
+│   │   ├── api/v1/          # routers: chat, meals, workouts, plans, checkins, dashboard, llm, whatsapp
 │   │   ├── core/            # config, db
 │   │   ├── models/          # SQLAlchemy
 │   │   ├── schemas/         # Pydantic
 │   │   └── services/
-│   │       ├── classifier.py    # classifica intenção (NUTRI / TREINO / MIXED / ORCHESTRATOR / SAFETY)
-│   │       ├── agents.py        # personas + biblioteca de treinos + estimador de macros
-│   │       ├── repository.py    # queries (totais do dia, semana, últimos check-ins, config do LLM)
-│   │       └── llm.py           # cliente OpenRouter opcional (ver "Integração com LLM" abaixo)
+│   │       ├── classifier.py       # classifica intenção (NUTRI / TREINO / MIXED / ORCHESTRATOR / SAFETY)
+│   │       ├── agents.py           # personas + biblioteca de treinos + estimador de macros
+│   │       ├── repository.py       # queries (totais do dia, semana, check-ins, config LLM/WhatsApp)
+│   │       ├── llm.py              # cliente OpenRouter opcional (ver "Integração com LLM" abaixo)
+│   │       ├── exercise_images.py  # imagens de demonstração (wger.de, ver seção abaixo)
+│   │       └── whatsapp.py         # cliente Evolution API opcional (ver "Espelhamento pro WhatsApp")
 │   ├── alembic/             # migrações (fonte de verdade do schema — ver db/schema.sql abaixo)
 │   ├── tests/                # pytest (testcontainers — Postgres descartável, sem rede real)
 │   ├── requirements.txt
@@ -115,6 +117,9 @@ npm run dev
 | `POST` | `/api/v1/llm/test` | Testa um modelo de verdade antes de salvar (não persiste nada) |
 | `GET`  | `/api/v1/llm/status` | LLM habilitado? Qual modelo (sem expor a key) |
 | `GET`  | `/api/v1/llm/models?free_only=true` | Catálogo de modelos do OpenRouter (só gratuitos por padrão — ver "Integração com LLM" abaixo) |
+| `GET`  | `/api/v1/whatsapp/config` / `PUT` | Liga/desliga o espelhamento pro WhatsApp e troca o número — vale no próximo chat, sem restart |
+| `POST` | `/api/v1/whatsapp/test` | Confirma que a instância da Evolution API está acessível/conectada (não envia mensagem) |
+| `GET`  | `/api/v1/whatsapp/status` | Espelhamento habilitado? Pra qual número (sem expor a key) |
 | `GET`  | `/health` | Healthcheck |
 
 ## Mapeamento com Hermes original
@@ -245,6 +250,55 @@ tem busca por nome funcional (só filtro por match exato), então
 `WORKOUT_LIBRARY` que têm imagem real disponível (10 dos 30 atualmente).
 Exercício fora do mapeamento simplesmente não manda imagem — cai pro texto
 normal, sem quebrar nada. Pra adicionar mais, ver o docstring do arquivo.
+
+## Espelhamento pro WhatsApp (opcional)
+
+Por padrão as respostas do chat ficam só no web. Pra também chegarem no
+WhatsApp via [Evolution API](https://github.com/EvolutionAPI/evolution-api)
+(**mesma instância que o bot antigo do Hermes usa** — ver observação
+importante abaixo):
+
+1. Defina as credenciais no `.env` (infra, só `.env`, igual
+   `OPENROUTER_API_KEY`):
+   ```bash
+   EVOLUTION_API_URL=http://host.docker.internal:8080  # ou o host onde a Evolution roda
+   EVOLUTION_API_KEY=...
+   EVOLUTION_INSTANCE=...   # nome da instância conectada (confira com /instance/fetchInstances)
+   ```
+   Com Docker, `docker-compose.yml` já repassa essas variáveis e resolve
+   `host.docker.internal` (Linux, Docker Engine ≥20.10) — útil quando a
+   Evolution API roda num container/stack separado deste projeto.
+2. **Liga o espelhamento e escolhe o número pela própria aplicação** —
+   tela **IA** (`/settings`) no web, seção "Espelhar no WhatsApp", ou
+   direto na API:
+   ```bash
+   # testa a conexão ANTES de habilitar (não envia mensagem)
+   curl -X POST http://localhost:8088/api/v1/whatsapp/test
+
+   # liga e define o número — vale no próximo chat, sem restart
+   curl -X PUT http://localhost:8088/api/v1/whatsapp/config \
+     -H "Content-Type: application/json" \
+     -d '{"enabled": true, "target_number": "553199674109"}'
+   ```
+
+Essa config (`enabled`/`target_number`) fica no banco (tabela
+`whatsapp_config`), como no LLM — `WHATSAPP_ENABLED`/`WHATSAPP_TARGET_NUMBER`
+no `.env` só semeiam o valor inicial.
+
+**O que é enviado:** só a resposta do agente (texto), depois que ela é
+gerada — nunca a mensagem que você digitou no web (você já a viu lá).
+Qualquer falha de envio (rede, instância desconectada, credenciais erradas)
+é capturada e nunca quebra a resposta do chat web — ver
+`api/app/services/whatsapp.py`.
+
+**⚠️ Se você já usa um bot de WhatsApp separado no mesmo número** (como o
+`master_agent_listener` do Hermes, que responde mensagens recebidas de
+verdade): esse espelhamento é **só de saída** (web → WhatsApp) — o
+health-agents não lê nem responde mensagens que chegam no WhatsApp, então
+não some com o outro bot nem cria loop de resposta automática. Mas os dois
+sistemas continuam sendo cérebros **independentes** (estados separados,
+classificação separada) — se você responder no WhatsApp uma mensagem que
+o health-agents mandou, quem processa é o outro bot, não este projeto.
 
 ## Próximos passos (roadmap)
 

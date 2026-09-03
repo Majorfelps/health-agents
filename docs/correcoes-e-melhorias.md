@@ -226,7 +226,10 @@ mudança de prioridade sugerida em relação ao que já estava no `README.md`:
     registrado como concluído"; pergunta "o que eu já comi hoje?" → LLM
     lista as refeições específicas do dia, não só o total.
 - [ ] Exportar PDF de relatório semanal.
-- [ ] Bot Telegram/WhatsApp opcional reusando a API atual.
+- [x] **Bot Telegram/WhatsApp opcional reusando a API atual** — parcial
+  (só saída web→WhatsApp, ver item abaixo); um bot completo
+  (bidirecional, escutando o WhatsApp) fica pra depois, se fizer
+  sentido.
 - [x] **Imagens de demonstração de exercício (ED o Personal)** ✅ concluído
   (2026-09-01) — pedido: "avalie se algum modelo gratuito consegue criar
   imagens pra que o ED Personal envie no chat".
@@ -295,6 +298,47 @@ mudança de prioridade sugerida em relação ao que já estava no `README.md`:
       corretas (Supino reto barra, Supino inclinado halter, Puxada
       frontal, Desenvolvimento militar), o LLM nomeou cada uma
       corretamente no texto, e as 4 renderizaram no browser com legenda.
+
+- [x] **Espelhamento das respostas do chat pro WhatsApp** ✅ concluído
+  (2026-09-03) — pedido: "usar os agents skills e as mensagens que são
+  enviadas na aplicação web chegar também no whatsapp via Evolution API".
+  - **Investigação prévia importante**: já existe um bot WhatsApp de
+    produção do Hermes (`master_agent_listener.py`) rodando/usado
+    ativamente (logs reais até 03/09) na instância Evolution **`migrar`**
+    (não `hermes2`, que está desatualizado nos docs do Hermes) — número
+    real conectado `553184880370`, diferente do `553199674109` que é o
+    default hardcoded no health-agents. Confirmado com o usuário: os dois
+    sistemas **coexistem** (cérebros independentes), e o número de
+    destino escolhido foi o `553199674109` (não o da instância).
+  - Pra evitar risco de loop/duplicata com o bot antigo (que tem suas
+    próprias proteções documentadas contra auto-resposta), o
+    espelhamento é **só de saída** (web → WhatsApp) — o health-agents
+    nunca lê/processa mensagens recebidas no WhatsApp, então não compete
+    com o listener do Hermes pela mesma conversa.
+  - `api/app/services/whatsapp.py`: cliente Evolution API
+    (`POST /message/sendText/{instance}`), mesmo padrão de robustez do
+    `llm.py` — qualquer falha (rede, credenciais, instância
+    desconectada) vira `False`/erro capturado, nunca quebra a resposta
+    do chat web. `test_connection()` confirma a instância sem enviar
+    mensagem (usado pelo botão "Testar conexão").
+  - Config (`enabled`/`target_number`) no banco (`whatsapp_config`,
+    singleton, mesmo padrão do `llm_config`) — editável via
+    `GET`/`PUT /api/v1/whatsapp/config` e pela tela **IA** (`/settings`,
+    seção "Espelhar no WhatsApp"), sem restart. Credenciais da Evolution
+    API (`EVOLUTION_API_KEY`/`URL`/`INSTANCE`) só no `.env`.
+  - `docker-compose.yml`: a Evolution API roda num container separado
+    (stack do n8n, fora deste projeto) — resolvida via
+    `host.docker.internal` + `extra_hosts: host-gateway` em vez de
+    acoplar à rede Docker de outro projeto.
+  - Enviado só o texto da resposta do agente (não a mensagem do
+    usuário — ele já viu o que digitou no web). `whatsapp_sent: bool` no
+    `ChatOut` confirma se foi enviado.
+  - 20 testes novos em `test_whatsapp.py` (mocks — sem chamada de rede
+    real no CI). Validado ao vivo: `POST /whatsapp/test` confirmou a
+    instância real conectada (`state: "open"`) tanto via curl quanto na
+    UI — **envio de mensagem real não foi testado nesta sessão**,
+    `WHATSAPP_ENABLED` ficou `false` por padrão até o usuário confirmar
+    explicitamente que quer testar um envio de verdade.
 
 ---
 

@@ -35,6 +35,19 @@ services:
       LLM_ENABLED: ${LLM_ENABLED:-false}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      # WhatsApp opcional (Evolution API) — idem, lido do .env na raiz.
+      WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
+      WHATSAPP_TARGET_NUMBER: ${WHATSAPP_TARGET_NUMBER:-}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://host.docker.internal:8080}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-}
+    # A Evolution API roda num container Docker separado (fora deste
+    # compose, ex: stack do n8n), publicada na porta 8080 do host — não
+    # dá pra acessar via nome de serviço (rede Docker diferente). Em vez
+    # de acoplar este projeto à rede de outro stack, resolve o host via
+    # gateway (funciona em Docker Engine ≥20.10 no Linux).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

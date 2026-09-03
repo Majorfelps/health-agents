@@ -10,7 +10,7 @@ from app.api.deps import get_or_create_current_user
 from app.core.db import get_db
 from app.models import models as m
 from app.schemas import schemas as s
-from app.services import classifier, agents, repository as repo
+from app.services import classifier, agents, repository as repo, whatsapp as whatsapp_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -150,6 +150,14 @@ def chat(
 
         db.commit()
 
+    # 6. Espelha a resposta pro WhatsApp (opcional, best-effort — nunca
+    #    quebra a resposta do chat web se falhar). Config vem do banco,
+    #    editável via GET/PUT /api/v1/whatsapp/config, sem restart.
+    whatsapp_cfg = repo.get_whatsapp_config(db)
+    whatsapp_sent = False
+    if payload.persist and whatsapp_service.is_enabled(whatsapp_cfg.enabled, whatsapp_cfg.target_number):
+        whatsapp_sent = whatsapp_service.send_message(whatsapp_cfg.target_number, reply.text)
+
     return s.ChatOut(
         user_message=payload.message,
         intent=cls.intent,
@@ -162,6 +170,7 @@ def chat(
         detected_water_ml=water_detected_ml,
         detected_workout=workout_completed_now,
         images=reply.images,
+        whatsapp_sent=whatsapp_sent,
         metadata=extra,
         message_id=message_id,
     )

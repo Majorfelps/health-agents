@@ -2,7 +2,7 @@
 import { useState } from "react";
 import NavBar from "@/components/NavBar";
 import { useApi, putJson, postJson } from "@/lib/api";
-import { LLMConfig, LLMModel, LLMTestResult } from "@/lib/types";
+import { LLMConfig, LLMModel, LLMTestResult, WhatsAppConfig, WhatsAppTestResult } from "@/lib/types";
 
 export default function SettingsPage() {
   const { data: cfg, mutate: refreshCfg } = useApi<LLMConfig>("/api/v1/llm/config");
@@ -10,6 +10,7 @@ export default function SettingsPage() {
   const { data: modelsData, isLoading: loadingModels } = useApi<{ models: LLMModel[] }>(
     `/api/v1/llm/models?free_only=${freeOnly}`
   );
+  const { data: waCfg, mutate: refreshWaCfg } = useApi<WhatsAppConfig>("/api/v1/whatsapp/config");
 
   return (
     <>
@@ -28,8 +29,115 @@ export default function SettingsPage() {
         ) : (
           <div className="text-gray-500">Carregando…</div>
         )}
+
+        <h2 className="text-xl font-bold text-gray-900 pt-2">📱 Espelhar no WhatsApp</h2>
+        {waCfg ? (
+          <WhatsAppForm initial={waCfg} onSaved={() => refreshWaCfg()} />
+        ) : (
+          <div className="text-gray-500">Carregando…</div>
+        )}
       </main>
     </>
+  );
+}
+
+function WhatsAppForm({ initial, onSaved }: { initial: WhatsAppConfig; onSaved: () => void }) {
+  const [enabled, setEnabled] = useState(initial.enabled);
+  const [targetNumber, setTargetNumber] = useState(initial.target_number);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<WhatsAppTestResult | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await putJson("/api/v1/whatsapp/config", { enabled, target_number: targetNumber });
+      setSaved(true);
+      onSaved();
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e: any) {
+      setError(String(e?.message || e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function testConnection() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await postJson<WhatsAppTestResult>("/api/v1/whatsapp/test", {});
+      setTestResult(r);
+    } catch (e: any) {
+      setTestResult({ ok: false, error: String(e?.message || e) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <section className="bg-white rounded-xl p-5 shadow-sm space-y-5">
+      <div>
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          Enviar respostas do chat também pro WhatsApp
+        </label>
+        <p className="text-xs text-gray-500 mt-1">
+          Via Evolution API (número/instância configurados no servidor via .env). Desligado por padrão — o chat web
+          continua funcionando normalmente sem isso. Só a resposta do agente é enviada, não a sua mensagem (você já a
+          digitou aqui).
+        </p>
+      </div>
+
+      <div>
+        <span className="text-sm font-medium text-gray-700">Número de destino</span>
+        <div className="flex gap-2 mt-1.5">
+          <input
+            type="text"
+            value={targetNumber}
+            onChange={(e) => {
+              setTargetNumber(e.target.value);
+              setTestResult(null);
+            }}
+            placeholder="ex: 553199674109 (DDI+DDD+número, sem @s.whatsapp.net)"
+            className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
+          />
+          <button
+            type="button"
+            onClick={testConnection}
+            disabled={testing}
+            className="px-3 py-1.5 rounded text-sm font-medium border border-gray-300 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
+          >
+            {testing ? "Testando…" : "Testar conexão"}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">
+          &quot;Testar conexão&quot; só confirma se a instância da Evolution API está acessível/conectada — não envia
+          mensagem nenhuma.
+        </p>
+
+        {testResult && (
+          <p className={"text-xs mt-1.5 " + (testResult.ok ? "text-green-700" : "text-red-600")}>
+            {testResult.ok
+              ? `✓ Instância conectada (state: ${testResult.state})`
+              : `✗ ${testResult.error}`}
+          </p>
+        )}
+      </div>
+
+      {error && <div className="text-sm text-red-600">Erro ao salvar: {error}</div>}
+
+      <button
+        onClick={save}
+        disabled={saving || (enabled && !targetNumber)}
+        className="bg-wa-green text-white px-5 py-2 rounded-lg font-medium disabled:opacity-50 hover:bg-wa-teal"
+      >
+        {saving ? "Salvando…" : saved ? "✓ Salvo — já vale no próximo chat" : "Salvar"}
+      </button>
+    </section>
   );
 }
 

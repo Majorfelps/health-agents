@@ -181,3 +181,28 @@ def update_llm_config(db: Session, enabled: bool, model: str) -> m.LLMConfig:
     db.commit()
     db.refresh(cfg)
     return cfg
+
+
+# ── WhatsApp config (singleton) ─────────────────────────────────────────────
+
+def get_whatsapp_config(db: Session) -> m.WhatsAppConfig:
+    """Config atual do espelhamento pro WhatsApp (enabled/target_number),
+    lida do banco — editável em runtime via PUT /api/v1/whatsapp/config,
+    sem restart. Cria a linha na 1ª chamada, semeada dos valores de
+    WHATSAPP_ENABLED/WHATSAPP_TARGET_NUMBER do .env."""
+    cfg = db.query(m.WhatsAppConfig).first()
+    if cfg is None:
+        cfg = m.WhatsAppConfig(enabled=settings.whatsapp_enabled, target_number=settings.whatsapp_target_number)
+        db.add(cfg)
+        db.commit()
+        db.refresh(cfg)
+    return cfg
+
+
+def update_whatsapp_config(db: Session, enabled: bool, target_number: str) -> m.WhatsAppConfig:
+    cfg = get_whatsapp_config(db)
+    cfg.enabled = enabled
+    cfg.target_number = target_number
+    db.commit()
+    db.refresh(cfg)
+    return cfg

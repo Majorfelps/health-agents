@@ -93,6 +93,7 @@ export interface ChatResponse {
   detected_water_ml: number | null;
   detected_workout: boolean;
   images: ExerciseImage[];
+  whatsapp_sent: boolean;
   message_id: number | null;
 }
 
@@ -114,6 +115,18 @@ export interface LLMModel {
   context_length: number;
   is_free: boolean;
   pricing: { prompt: string; completion: string };
+}
+
+export interface WhatsAppConfig {
+  enabled: boolean;
+  target_number: string;
+  updated_at: string;
+}
+
+export interface WhatsAppTestResult {
+  ok: boolean;
+  state?: string | null;
+  error?: string | null;
 }
 
 export const AGENT_LABEL: Record<string, { label: string; emoji: string }> = {

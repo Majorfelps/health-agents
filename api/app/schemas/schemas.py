@@ -140,6 +140,7 @@ class ChatOut(BaseModel):
     detected_water_ml: Optional[float] = None
     detected_workout: bool = False
     images: list[dict] = Field(default_factory=list)  # [{"exercise": str, "url": str}, ...]
+    whatsapp_sent: bool = False
     metadata: Optional[dict] = None
     message_id: Optional[int] = None
 
@@ -185,4 +186,24 @@ class LLMTestIn(BaseModel):
 class LLMTestOut(BaseModel):
     ok: bool
     sample: Optional[str] = None
+    error: Optional[str] = None
+
+
+# ── WhatsApp config ─────────────────────────────────────────────────────────
+
+class WhatsAppConfigIn(BaseModel):
+    enabled: bool
+    target_number: str = ""  # ex.: "553199674109" (sem @s.whatsapp.net)
+
+
+class WhatsAppConfigOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    enabled: bool
+    target_number: str
+    updated_at: datetime
+
+
+class WhatsAppTestOut(BaseModel):
+    ok: bool
+    state: Optional[str] = None
     error: Optional[str] = None

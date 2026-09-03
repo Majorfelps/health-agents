@@ -89,6 +89,19 @@ class LLMConfig(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class WhatsAppConfig(Base):
+    """Config do espelhamento pro WhatsApp (singleton — sempre 1 linha).
+    Editável via PUT /api/v1/whatsapp/config, sem restart. Credenciais da
+    Evolution API (EVOLUTION_API_KEY/URL/INSTANCE) continuam só no .env —
+    não são editáveis por aqui, por segurança."""
+    __tablename__ = "whatsapp_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    target_number: Mapped[str] = mapped_column(String(50), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class Meal(Base):
     """Refeição registrada (com 3 opções A/B/C). Espelha nutrition_logs."""
     __tablename__ = "meals"
