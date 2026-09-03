@@ -192,9 +192,10 @@ def test_gerar_resposta_llm_recebe_memoria_do_dia_no_contexto(monkeypatch):
 
 
 def test_gerar_resposta_llm_anexa_imagem_de_exercicio_mencionado(monkeypatch):
-    """image_url é sempre resolvido por regra fixa (exercise_images.py, com
+    """images é sempre resolvido por regra fixa (exercise_images.py, com
     base no wger.de), nunca inventado pelo LLM — mas o contexto avisa o LLM
-    que uma imagem foi anexada, pra ele poder referenciar naturalmente."""
+    do NOME de cada exercício cuja foto foi anexada (regressão: antes só
+    mandava um booleano, e o LLM chutava errado qual exercício era)."""
     from app.services.exercise_images import EXERCISE_IMAGES
 
     captured = {}
@@ -214,8 +215,36 @@ def test_gerar_resposta_llm_anexa_imagem_de_exercicio_mencionado(monkeypatch):
         llm_model="x/x",
     )
 
-    assert reply.image_url == EXERCISE_IMAGES["Supino reto barra"]
-    assert captured["context"]["imagem_de_demonstracao_anexada_nesta_resposta"] is True
+    assert reply.images == [{"exercise": "Supino reto barra", "url": EXERCISE_IMAGES["Supino reto barra"]}]
+    assert captured["context"]["fotos_anexadas_nesta_resposta"] == ["Supino reto barra"]
+
+
+def test_gerar_resposta_llm_lista_todos_os_exercicios_com_foto_no_contexto(monkeypatch):
+    """Pra uma pergunta geral (não menciona exercício específico), o
+    contexto tem que listar TODOS os exercícios do treino do dia com foto
+    — não só o primeiro."""
+    captured = {}
+
+    def _fake_generate(agent, user_msg, context, model):
+        captured["context"] = context
+        return "ok"
+
+    monkeypatch.setattr(llm, "is_enabled", lambda *a, **k: True)
+    monkeypatch.setattr(llm, "generate_reply_via_llm", _fake_generate)
+
+    protocolo = {str(d): "UPPER A" for d in range(7)}
+    reply = agents.gerar_resposta(
+        intent="TED_PERSONAL",
+        user_msg="qual o treino de hoje?",
+        profile=agents.DEFAULT_USER_PROFILE,
+        protocolo=protocolo,
+        llm_enabled=True,
+        llm_model="x/x",
+    )
+
+    nomes = [img["exercise"] for img in reply.images]
+    assert nomes == ["Supino reto barra", "Supino inclinado halter", "Puxada frontal", "Desenvolvimento militar"]
+    assert captured["context"]["fotos_anexadas_nesta_resposta"] == nomes
 
 
 def test_gerar_resposta_safety_alert_nunca_chama_llm(monkeypatch):

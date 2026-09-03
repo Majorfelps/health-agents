@@ -226,10 +226,12 @@ O que **nunca** muda, mesmo com LLM habilitado:
 ## Imagens de demonstração de exercício (ED o Personal)
 
 Quando a mensagem menciona um exercício específico (ex: "como faz o supino
-reto barra?") ou o treino do dia inclui um exercício mapeado, o ED o
-Personal anexa uma foto real de demonstração no chat — via
-[wger.de](https://wger.de) (banco de exercícios aberto, CC0/CC-BY-SA, sem
-API key).
+reto barra?") o ED o Personal anexa só a foto desse exercício; numa
+pergunta geral (ex: "qual o treino de hoje?") ele anexa a foto de **todos**
+os exercícios do treino do dia que tiverem imagem mapeada — cada uma já
+nomeada com o exercício certo, tanto na resposta do LLM quanto na UI —
+via [wger.de](https://wger.de) (banco de exercícios aberto, CC0/CC-BY-SA,
+sem API key).
 
 Avaliamos gerar imagem por IA primeiro: **nenhum modelo gratuito da
 OpenRouter gera imagem** (catálogo checado ao vivo — só 11 modelos com

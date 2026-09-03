@@ -265,6 +265,36 @@ mudança de prioridade sugerida em relação ao que já estava no `README.md`:
     imagem real renderizada no browser pra "supino reto barra" e
     "agachamento livre", persistindo após reload; LLM comentou a foto
     anexada corretamente sem inventar detalhes dela.
+  - **Correção (2026-09-03)** — reportado em teste: "o agente só traz 1
+    dos exercícios da rotina do dia". Reproduzido ao vivo: o `find_image()`
+    original só resolvia o *primeiro* exercício do treino com imagem
+    mapeada (não todos), e o contexto passado ao LLM só dizia
+    `imagem_de_demonstracao_anexada_nesta_resposta=true` (booleano, sem
+    dizer qual exercício) — o LLM chutava "o primeiro exercício da lista",
+    que na prática podia ser o 4º ou qualquer outro (ex: treino UPPER B
+    com foto da "Rosca direta" virou "mandei a foto do primeiro
+    exercício" errado, era o 4º).
+    - `find_image()` → `find_images()`, agora retorna uma **lista** de
+      `ExerciseImage(exercise, url)`: pra pergunta geral, todos os
+      exercícios do treino com imagem mapeada (não só o 1º); pra menção
+      explícita de 1 exercício, só a dele.
+    - `AgentReply.image_url` → `AgentReply.images: list[dict]`.
+      Contexto do LLM ganhou `fotos_anexadas_nesta_resposta` (lista de
+      *nomes*, não booleano) — o prompt do ED o Personal foi reescrito
+      pra nomear cada exercício da lista, nunca inventar "primeiro/
+      segundo" sem usar o nome real.
+    - `ChatOut.image_url` → `ChatOut.images`, idem no histórico
+      (`extra.images`) e no frontend (`ChatMessage.images`,
+      `ExerciseImage` em `types.ts`) — a UI agora renderiza uma imagem
+      por exercício, cada uma com o nome embaixo.
+    - Testes atualizados pra cobrir isso: `UPPER A` (4 dos 6 exercícios
+      mapeados) usado como caso de regressão — tem que trazer os 4, na
+      ordem certa, cada um nomeado.
+    - Validado ao vivo: forçei o treino de hoje pra `UPPER A` via
+      `PUT /plan/training` e testei — resposta trouxe as 4 imagens
+      corretas (Supino reto barra, Supino inclinado halter, Puxada
+      frontal, Desenvolvimento militar), o LLM nomeou cada uma
+      corretamente no texto, e as 4 renderizaram no browser com legenda.
 
 ---
 

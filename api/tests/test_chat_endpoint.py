@@ -113,18 +113,35 @@ def test_chat_exercicio_mencionado_anexa_imagem_de_demonstracao(client):
     r = client.post("/api/v1/chat", json={"message": "quero fazer supino reto barra hoje"})
     body = r.json()
     assert body["intent"] == "TED_PERSONAL"
-    assert body["image_url"] is not None
-    assert body["image_url"].startswith("https://wger.de/")
+    assert len(body["images"]) == 1
+    assert body["images"][0]["exercise"] == "Supino reto barra"
+    assert body["images"][0]["url"].startswith("https://wger.de/")
 
     # a imagem também aparece no histórico (persistida no extra do outbound)
     history = client.get("/api/v1/chat/history").json()
     outbound = [h for h in history if h["direction"] == "outbound"][-1]
-    assert outbound["image_url"] == body["image_url"]
+    assert outbound["images"] == body["images"]
 
 
 def test_chat_saudacao_nao_anexa_imagem(client):
     r = client.post("/api/v1/chat", json={"message": "oi"})
-    assert r.json()["image_url"] is None
+    assert r.json()["images"] == []
+
+
+def test_chat_pergunta_geral_traz_imagem_de_todos_os_exercicios_do_treino(client):
+    """Regressão do bug reportado: 'qual o treino de hoje?' tinha que
+    trazer TODOS os exercícios do treino com imagem mapeada, não só 1.
+    Força o treino de hoje pra UPPER A (via plan/training) — ela tem 4
+    dos 6 exercícios mapeados, então tem que vir os 4."""
+    plan = client.get("/api/v1/plan/training").json()
+    protocolo = {str(d): "UPPER A" for d in range(7)}
+    client.put("/api/v1/plan/training", json={"protocolo": protocolo, "ativo": plan["ativo"]})
+
+    r = client.post("/api/v1/chat", json={"message": "qual o treino de hoje?"})
+    body = r.json()
+
+    nomes = [img["exercise"] for img in body["images"]]
+    assert nomes == ["Supino reto barra", "Supino inclinado halter", "Puxada frontal", "Desenvolvimento militar"]
 
 
 def test_chat_persist_false_nao_grava_agua_nem_treino(client):

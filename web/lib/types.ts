@@ -66,13 +66,18 @@ export interface CheckinOut {
   created_at: string;
 }
 
+export interface ExerciseImage {
+  exercise: string;
+  url: string;
+}
+
 export interface ChatMessage {
   id?: number;
   agent: string;
   direction: "inbound" | "outbound";
   message: string;
   intent?: string;
-  image_url?: string | null;
+  images?: ExerciseImage[];
   created_at?: string;
 }
 
@@ -87,7 +92,7 @@ export interface ChatResponse {
   detected_meal: { descricao: string; kcal: number; P: number; F: number; C: number } | null;
   detected_water_ml: number | null;
   detected_workout: boolean;
-  image_url: string | null;
+  images: ExerciseImage[];
   message_id: number | null;
 }
 

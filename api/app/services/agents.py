@@ -14,7 +14,7 @@ A interface é a mesma, então trocar para LLM depois é trivial.
 from __future__ import annotations
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Optional
 
@@ -221,7 +221,7 @@ class AgentReply:
     agent: str
     intent: str
     detected_meal: Optional[dict] = None
-    image_url: Optional[str] = None
+    images: list[dict] = field(default_factory=list)  # [{"exercise": str, "url": str}, ...]
     metadata: Optional[dict] = None
 
 
@@ -281,7 +281,7 @@ def reply_safety(profile: dict) -> AgentReply:
 
 
 def reply_mixed(profile: dict, user_msg: str, protocolo: dict | None = None) -> AgentReply:
-    from app.services.exercise_images import find_image
+    from app.services.exercise_images import find_images
     return AgentReply(
         text=(
             "🤖 *Master Agent* — entendi que envolve nutrição + treino, vou te dar a visão integrada.\n\n"
@@ -291,7 +291,7 @@ def reply_mixed(profile: dict, user_msg: str, protocolo: dict | None = None) -> 
         ),
         agent="master",
         intent="MIXED",
-        image_url=find_image(user_msg, _treino_hoje(protocolo)),
+        images=[i.to_dict() for i in find_images(user_msg, _treino_hoje(protocolo))],
     )
 
 
@@ -371,10 +371,10 @@ def reply_personal(profile: dict, user_msg: str, protocolo: dict | None = None) 
         body = "\n".join(linhas) + (
             "\n\nBora! 🔥 Marca o ✅ quando terminar e me passa o RPE médio (1–10)."
         )
-    from app.services.exercise_images import find_image
+    from app.services.exercise_images import find_images
     return AgentReply(
         text=body, agent="personal", intent="TED_PERSONAL",
-        image_url=find_image(user_msg, hoje),
+        images=[i.to_dict() for i in find_images(user_msg, hoje)],
     )
 
 
@@ -458,7 +458,7 @@ def _gerar_resposta_llm(
 ) -> AgentReply | None:
     from app.services import llm
     from app.services.classifier import looks_like_meal
-    from app.services.exercise_images import find_image
+    from app.services.exercise_images import find_images
 
     agent = {"ED_NUTRI": "nutri", "TED_PERSONAL": "personal"}.get(intent, "master")
 
@@ -466,7 +466,7 @@ def _gerar_resposta_llm(
     if intent == "ED_NUTRI" and looks_like_meal(user_msg):
         detected_meal = estimate_macros(user_msg)
 
-    image_url = None
+    images: list = []
     context: dict = {"intent": intent}
     if water_detected_ml is not None:
         context["agua_detectada_nesta_mensagem_ml"] = water_detected_ml
@@ -483,15 +483,17 @@ def _gerar_resposta_llm(
         context["treino_hoje"] = treino
         context["dia_da_semana"] = DIAS_PT[date.today().weekday()]
         context["treino_de_hoje_ja_registrado_como_concluido"] = workout_logged_today
-        # imagem de demonstração é sempre resolvida por regra fixa (wger.de
-        # curado), nunca inventada/gerada pelo LLM
-        image_url = find_image(user_msg, treino)
-        context["imagem_de_demonstracao_anexada_nesta_resposta"] = image_url is not None
+        # imagens de demonstração são sempre resolvidas por regra fixa
+        # (wger.de curado), nunca inventadas/geradas pelo LLM — mas o LLM
+        # recebe o nome de CADA exercício cuja foto foi anexada, pra nunca
+        # ter que adivinhar/chutar qual é ("o primeiro exercício" etc.)
+        images = [i.to_dict() for i in find_images(user_msg, treino)]
+        context["fotos_anexadas_nesta_resposta"] = [i["exercise"] for i in images]
 
     text = llm.generate_reply_via_llm(agent, user_msg, context, llm_model)
     if text is None:
         return None
-    return AgentReply(text=text, agent=agent, intent=intent, detected_meal=detected_meal, image_url=image_url)
+    return AgentReply(text=text, agent=agent, intent=intent, detected_meal=detected_meal, images=images)
 
 
 def _gerar_resposta_deterministica(

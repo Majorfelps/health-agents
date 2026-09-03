@@ -17,6 +17,7 @@ pegue o ID e confirme imagem em GET /api/v2/exerciseinfo/<id>/?format=json
 """
 from __future__ import annotations
 import unicodedata
+from dataclasses import dataclass
 
 # nome (idêntico ao usado em WORKOUT_LIBRARY) → URL pública da imagem
 EXERCISE_IMAGES: dict[str, str] = {
@@ -40,28 +41,53 @@ def _norm(s: str) -> str:
 _NORMALIZED_IMAGES = {_norm(k): v for k, v in EXERCISE_IMAGES.items()}
 
 
+@dataclass
+class ExerciseImage:
+    exercise: str  # nome exato do exercício (o mesmo do WORKOUT_LIBRARY)
+    url: str
+
+    def to_dict(self) -> dict:
+        return {"exercise": self.exercise, "url": self.url}
+
+
 def image_for_exercise(name: str) -> str | None:
     """Imagem de demonstração pro exercício, se tiver mapeado (comparação
     sem acento/case, pra não depender de digitação exata)."""
     return _NORMALIZED_IMAGES.get(_norm(name))
 
 
-def find_image(user_msg: str, treino: dict | None) -> str | None:
-    """Resolve qual imagem mandar no chat: primeiro tenta achar um
-    exercício mencionado explicitamente na mensagem do usuário (mais
-    específico — ex: "como faz o supino reto?"); se não achar, cai pro
-    primeiro exercício com imagem no treino do dia (contexto geral, ex:
-    "qual treino de hoje?"). None se nada bater."""
-    msg_norm = _norm(user_msg)
-    for name, url in EXERCISE_IMAGES.items():
-        if _norm(name) in msg_norm:
-            return url
+def find_images(user_msg: str, treino: dict | None) -> list[ExerciseImage]:
+    """Resolve quais imagens mandar no chat, cada uma já nomeada com o
+    exercício correspondente (pra nunca virar "a foto do primeiro
+    exercício" — o LLM recebe o nome certo de cada uma):
 
-    if treino:
-        for ex in treino.get("exercicios", []):
-            nome_exercicio = ex[0] if ex else None
-            if nome_exercicio:
-                img = image_for_exercise(nome_exercicio)
-                if img:
-                    return img
-    return None
+    - Se a mensagem cita exercício(s) específico(s) por nome (ex: "como
+      faz o supino reto barra?"), manda só a(s) imagem(ns) do(s)
+      exercício(s) citado(s) — não polui com o resto do treino.
+    - Senão (pergunta geral, ex: "qual o treino de hoje?"), manda a
+      imagem de TODOS os exercícios do treino do dia que tiverem
+      mapeamento — não só o primeiro.
+
+    Lista vazia se nada bater (treino sem exercícios mapeados, ou
+    mensagem sem treino/exercício algum)."""
+    msg_norm = _norm(user_msg)
+    mencionados = [
+        ExerciseImage(exercise=name, url=url)
+        for name, url in EXERCISE_IMAGES.items()
+        if _norm(name) in msg_norm
+    ]
+    if mencionados:
+        return mencionados
+
+    if not treino:
+        return []
+
+    out: list[ExerciseImage] = []
+    for ex in treino.get("exercicios", []):
+        nome_exercicio = ex[0] if ex else None
+        if not nome_exercicio:
+            continue
+        img = image_for_exercise(nome_exercicio)
+        if img:
+            out.append(ExerciseImage(exercise=nome_exercicio, url=img))
+    return out
